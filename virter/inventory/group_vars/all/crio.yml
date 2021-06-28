@@ -1,0 +1,8 @@
+crio_registries_mirrors:
+  - prefix: docker.io
+    insecure: false
+    blocked: false
+    location: registry-1.docker.io
+    mirrors:
+      - location: nexus.at.linbit.com:5050
+        insecure: false

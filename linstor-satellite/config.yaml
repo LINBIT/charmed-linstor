@@ -1,0 +1,18 @@
+# Copyright 2021 LINBIT HA-Solutions GmbH
+# See LICENSE file for licensing details.
+#
+# TEMPLATE-TODO: change this example to suit your needs.
+# If you don't need a config, you can remove the file entirely.
+# It ties in to the example _on_config_changed handler in src/charm.py
+#
+# Learn more about config at: https://juju.is/docs/sdk/config
+
+options:
+  linstor-control-port:
+    default: 3366
+    description: Port the Linstor Satellite will listen on for control plane commands.
+    type: int
+  metrics-port:
+    default: 9942
+    description: Port the metrics RBAC proxy will listen on.
+    type: int

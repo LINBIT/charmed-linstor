@@ -1,0 +1,35 @@
+# Copyright 2021 LINBIT HA-Solutions GmbH
+# See LICENSE file for licensing details.
+name: linstor-satellite
+description: |
+  TEMPLATE-TODO: fill out the charm's description
+summary: |
+  TEMPLATE-TODO: fill out the charm's summary
+tags:
+  - storage
+maintainers:
+  - "Moritz Wanzenböck <moritz.wanzenboeck@linbit.com>"
+
+series:
+  - kubernetes
+
+deployment:
+  type: daemon
+
+resources:
+  linstor-satellite-image:
+    type: oci-image
+    description: LINSTOR Satellite Image
+    upstream-source: drbd.io/linstor-satellite:v1.13.0
+  drbd-monitoring-image:
+    type: oci-image
+    description: DRBD Monitoring Image
+    upstream-source: drbd.io/drbd-reactor:v0.4.0
+  drbd-injector-image:
+    type: oci-image
+    description: DRBD Injector Image
+    upstream-source: drbd.io/drbd9-focal:v9.0.29
+  kube-rbac-proxy-image:
+    type: oci-image
+    description: Kube RBAC Proxy Image
+    upstream: quay.io/brancz/kube-rbac-proxy:v0.10.0

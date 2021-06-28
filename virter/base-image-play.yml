@@ -1,0 +1,6 @@
+---
+- hosts: all
+  # Forces gather facts for all hosts
+  roles: []
+
+- import_playbook: /kubespray/cluster.yml
