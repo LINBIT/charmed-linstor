@@ -6,13 +6,19 @@ description: |
 summary: |
   TEMPLATE-TODO: fill out the charm's summary
 
-# TEMPLATE-TODO: replace with containers for your workload (delete for non-k8s)
-containers:
-  httpbin:
-    resource: httpbin-image
+series:
+  - kubernetes
 
-# TEMPLATE-TODO: each container defined above must specify an oci-image resource
+requires:
+  database:
+    interface: pgsql
+    limit: 1
+
+deployment:
+  type: stateless
+
 resources:
-  httpbin-image:
+  linstor-controller-image:
     type: oci-image
-    description: OCI image for httpbin (kennethreitz/httpbin)
+    description: LINSTOR Satellite Image
+    upstream-source: drbd.io/linstor-controller:v1.13.0

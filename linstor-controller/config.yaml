@@ -8,7 +8,7 @@
 # Learn more about config at: https://juju.is/docs/sdk/config
 
 options:
-  thing:
-    default: 🎁
-    description: A thing used by the charm.
-    type: string
+  linstor-http-port:
+    default: 3370
+    description: Port for the LINSTOR HTTP API
+    type: int

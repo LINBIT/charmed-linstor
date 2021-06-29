@@ -12,7 +12,7 @@ options:
     default: 3366
     description: Port the Linstor Satellite will listen on for control plane commands.
     type: int
-  metrics-port:
-    default: 9942
-    description: Port the metrics RBAC proxy will listen on.
-    type: int
+  compile-module:
+    default: false
+    description: Compile the DBRD module (instead of loading from packages)
+    type: boolean

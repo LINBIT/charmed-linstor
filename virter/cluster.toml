@@ -15,7 +15,7 @@ command = [
       --extra-vars artifacts_dir=/virter/out/artifacts \
       --extra-vars credentials_dir=/virter/out/credentials \
       --skip-tags container-engine,bootstrap-os,preinstall,download \
-      cluster.yml
+      /virter/workspace/virter/cluster-play.yml
     """,
 ]
 [steps.docker.copy]
