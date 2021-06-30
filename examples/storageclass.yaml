@@ -1,0 +1,10 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: example-storageclass
+provisioner: linstor.csi.linbit.com
+allowVolumeExpansion: true
+volumeBindingMode: Immediate
+parameters:
+  autoPlace: "2"
+  storagePool: filepool
