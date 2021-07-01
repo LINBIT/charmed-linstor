@@ -20,16 +20,20 @@ from ops import charm, framework, main, model
 
 logger = logging.getLogger(__name__)
 
+__version__ = "1.0.0-alpha0"
 
-class LinstorSatelliteCharm(charm.CharmBase):
+
+class LinstorControllerCharm(charm.CharmBase):
     _stored = framework.StoredState()
 
     def __init__(self, *args):
         super().__init__(*args)
 
+        # TODO support both mysql and postgres
         self._stored.set_default(db_host=None, db_port=None, db_database=None, db_user=None, db_password=None)
 
         self.framework.observe(self.on.database_relation_changed, self._on_database_relation_changed)
+        self.framework.observe(self.on.linstor_api_relation_changed, self._on_linstor_api_relation_changed)
 
         self.linstor_controller_image = OCIImageResource(self, "linstor-controller-image")
         self.framework.observe(self.on.install, self._set_pod_spec)
@@ -37,9 +41,6 @@ class LinstorSatelliteCharm(charm.CharmBase):
         self.framework.observe(self.on.config_changed, self._set_pod_spec)
 
     def _set_pod_spec(self, event: charm.HookEvent):
-        if not self.unit.is_leader():
-            return
-
         try:
             linstor_controller_image = self.linstor_controller_image.fetch()
         except OCIImageResourceError as e:
@@ -62,6 +63,10 @@ class LinstorSatelliteCharm(charm.CharmBase):
             },
         })
 
+        linstor_client_conf = f"""[global]
+controllers = {self._linstor_api_url()}
+"""
+
         linstor_election_env = {
             "K8S_AWAIT_ELECTION_ENABLED": 1,
             "K8S_AWAIT_ELECTION_NAME": self.app.name,
@@ -73,102 +78,115 @@ class LinstorSatelliteCharm(charm.CharmBase):
             "K8S_AWAIT_ELECTION_SERVICE_NAME": self.app.name,
             "K8S_AWAIT_ELECTION_SERVICE_NAMESPACE": {"field": {"path": "metadata.namespace", "api-version": "v1"}},
             "K8S_AWAIT_ELECTION_SERVICE_PORTS_JSON": json.dumps(
-                [{"name": "linstor-controller", "port": self.config["linstor-http-port"]}]
+                [{"name": "linstor-api", "port": self.config["linstor-http-port"]}]
             ),
             "K8S_AWAIT_ELECTION_STATUS_ENDPOINT": ":9999",
         }
 
-        self.unit.status = model.MaintenanceStatus("Setting pod spec")
-        self.model.pod.set_spec(
-            spec={
-                "version": 3,
-                "containers": [
-                    {
-                        "name": "linstor-controller",
-                        "imageDetails": linstor_controller_image,
-                        "args": ["startController"],
-                        "ports": [
-                            {"name": "linstor-api", "containerPort": self.model.config["linstor-http-port"]},
-                        ],
-                        "volumeConfig": [
-                            {
-                                "name": "linstor",
-                                "mountPath": "/etc/linstor",
-                                "files": [
-                                    {
-                                        "path": "linstor.toml",
-                                        "content": linstor_conf,
-                                    },
-                                ],
-                            }
-                        ],
-                        "envConfig": linstor_election_env,
-                    },
-                ],
-                "serviceAccount": {
-                    "roles": [
+        if self.unit.is_leader():
+            self.app.status = model.MaintenanceStatus("Setting pod spec")
+            self.model.pod.set_spec(
+                spec={
+                    "version": 3,
+                    "containers": [
                         {
                             "name": "linstor-controller",
-                            "rules": [
-                                {
-                                    "apiGroups": ["coordination.k8s.io"],
-                                    "resources": ["leases"],
-                                    "verbs": [
-                                        "get",
-                                        "list",
-                                        "watch",
-                                        "delete",
-                                        "update",
-                                        "create",
-                                    ],
-                                },
-                                {
-                                    "apiGroups": [""],
-                                    "resources": ["endpoints", "endpoints/restricted"],
-                                    "verbs": [
-                                        "create",
-                                        "patch",
-                                        "update",
-                                    ],
-                                },
+                            "imageDetails": linstor_controller_image,
+                            "args": ["startController"],
+                            "ports": [
+                                {"name": "linstor-api", "containerPort": self.model.config["linstor-http-port"]},
                             ],
-                        },
-                    ],
-                },
-            },
-            k8s_resources={
-                "kubernetesResources": {
-                    "services": [
-                        {
-                            "name": self.app.name,
-                            "spec": {
-                                "type": "ClusterIP",
-                                "clusterIP": "",
-                                "ports": [
-                                    {
-                                        "name": "linstor-api",
-                                        "protocol": "TCP",
-                                        "port": self.model.config["linstor-http-port"],
-                                        "targetPort": self.model.config["linstor-http-port"],
+                            "volumeConfig": [
+                                {
+                                    "name": "linstor",
+                                    "mountPath": "/etc/linstor",
+                                    "files": [
+                                        {
+                                            "path": "linstor.toml",
+                                            "content": linstor_conf,
+                                        },
+                                        {
+                                            "path": "linstor-client.conf",
+                                            "content": linstor_client_conf,
+                                        },
+                                    ],
+                                }
+                            ],
+                            "envConfig": linstor_election_env,
+                            "kubernetes": {
+                                "livenessProbe": {
+                                    "failureThreshold": 3,
+                                    "httpGet": {
+                                        "path": "/",
+                                        "port": 9999,
+                                        "scheme": "HTTP"
                                     },
-                                ],
+                                    "periodSeconds": 10,
+                                    "successThreshold": 1,
+                                    "timeoutSeconds": 1
+                                },
                             },
                         },
                     ],
+                    "serviceAccount": {
+                        "roles": [
+                            {
+                                "name": "linstor-controller",
+                                "rules": [
+                                    {
+                                        "apiGroups": ["coordination.k8s.io"],
+                                        "resources": ["leases"],
+                                        "verbs": [
+                                            "get",
+                                            "list",
+                                            "watch",
+                                            "delete",
+                                            "update",
+                                            "create",
+                                        ],
+                                    },
+                                    {
+                                        "apiGroups": [""],
+                                        "resources": ["endpoints", "endpoints/restricted"],
+                                        "verbs": [
+                                            "create",
+                                            "patch",
+                                            "update",
+                                        ],
+                                    },
+                                ],
+                            },
+                        ],
+                    },
                 },
-            },
-        )
+                k8s_resources={
+                    "kubernetesResources": {
+                        "services": [
+                            {
+                                "name": self.app.name,
+                                "spec": {
+                                    "type": "ClusterIP",
+                                    "clusterIP": "",
+                                    "ports": [
+                                        {
+                                            "name": "linstor-api",
+                                            "protocol": "TCP",
+                                            "port": self.config["linstor-http-port"],
+                                            "targetPort": self.config["linstor-http-port"],
+                                        },
+                                    ],
+                                },
+                            },
+                        ],
+                    },
+                },
+            )
+            self.app.status = model.ActiveStatus()
 
         self.unit.status = model.ActiveStatus()
 
-    def _db_name(self):
-        return self.config["dbname"]
-
     def _on_database_relation_changed(self, event: charm.RelationChangedEvent):
-        if not self.unit.is_leader():
-            return
-
-        if event.relation.data[self.app].get("database") != self.app.name:
+        if self.unit.is_leader() and event.relation.data[self.app].get("database") != self.app.name:
             event.relation.data[self.app].update({"database": self.app.name})
 
         self._stored.db_host = event.relation.data[event.app].get("host")
@@ -179,6 +197,13 @@ class LinstorSatelliteCharm(charm.CharmBase):
 
         self._set_pod_spec(event)
 
+    def _on_linstor_api_relation_changed(self, event: charm.RelationChangedEvent):
+        if self.unit.is_leader():
+            event.relation.data[self.app].update({"url": self._linstor_api_url()})
+
+    def _linstor_api_url(self):
+        return f"http://{self.app.name}.{self.model.name}.svc:{self.config['linstor-http-port']}"
+
 
 if __name__ == "__main__":
-    main.main(LinstorSatelliteCharm)
+    main.main(LinstorControllerCharm)

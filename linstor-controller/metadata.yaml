@@ -5,6 +5,10 @@ description: |
   TEMPLATE-TODO: fill out the charm's description
 summary: |
   TEMPLATE-TODO: fill out the charm's summary
+tags:
+  - storage
+maintainers:
+  - "Moritz Wanzenböck <moritz.wanzenboeck@linbit.com>"
 
 series:
   - kubernetes
@@ -14,11 +18,17 @@ requires:
     interface: pgsql
     limit: 1
 
+provides:
+  linstor-api:
+    interface: linstor-api
+    optional: true
+
 deployment:
   type: stateless
+  service: omit
 
 resources:
   linstor-controller-image:
     type: oci-image
-    description: LINSTOR Satellite Image
+    description: LINSTOR Controller Image
     upstream-source: drbd.io/linstor-controller:v1.13.0

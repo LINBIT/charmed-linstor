@@ -13,6 +13,11 @@ maintainers:
 series:
   - kubernetes
 
+requires:
+  controller:
+    interface: linstor-api
+    optional: true
+
 deployment:
   type: daemon
   service: omit

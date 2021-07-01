@@ -1,0 +1,49 @@
+# Copyright 2021 LINBIT HA-Solutions GmbH
+# See LICENSE file for licensing details.
+name: linstor-csi-controller
+description: |
+  TEMPLATE-TODO: fill out the charm's description
+summary: |
+  TEMPLATE-TODO: fill out the charm's summary
+tags:
+  - storage
+maintainers:
+  - "Moritz Wanzenböck <moritz.wanzenboeck@linbit.com>"
+
+series:
+  - kubernetes
+
+requires:
+  linstor:
+    interface: linstor-api
+    limit: 1
+
+deployment:
+  type: stateless
+  service: omit
+
+resources:
+  linstor-csi-image:
+    type: oci-image
+    description: LINSTOR CSI Image
+    upstream-source: drbd.io/linstor-csi:v0.13.1
+  csi-attacher-image:
+    type: oci-image
+    description: CSI Attacher Image
+    upstream-source: k8s.gcr.io/sig-storage/csi-attacher:v3.1.0
+  csi-liveness-probe-image:
+    type: oci-image
+    description: CSI liveness probe Image
+    upstream-source: k8s.gcr.io/sig-storage/livenessprobe:v2.2.0
+  csi-provisioner-image:
+    type: oci-image
+    description: CSI Provisioner Image
+    upstream-source: k8s.gcr.io/sig-storage/csi-provisioner:v2.1.2
+  csi-resizer-image:
+    type: oci-image
+    description: CSI Resizer Image
+    upstream-source: k8s.gcr.io/sig-storage/csi-resizer:v1.1.0
+  csi-snapshotter-image:
+    type: oci-image
+    description: CSI Snapshotter Image
+    upstream-source: k8s.gcr.io/sig-storage/csi-snapshotter:v3.0.3
