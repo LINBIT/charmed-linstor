@@ -4,7 +4,43 @@ Charmed Operators for Kubernetes to deploy a LINSTOR cluster.
 
 # Development
 
+## MicroK8s Quickstart (using snaps :scream:)
+
 Follow the intructions [here](https://juju.is/docs/sdk/dev-setup).
+
+TLDR:
+
+```
+$ snap install --classic microk8s
+2021-07-02T07:24:29Z INFO Waiting for automatic snapd restart...
+microk8s (1.21/stable) v1.21.1 from Canonical✓ installed
+$ microk8s enable storage dns rbac
+$ snap alias microk8s.kubectl kubectl
+Added:
+  - microk8s.kubectl as kubectl
+$ snap alias microk8s.juju juju
+Added:
+  - microk8s.juju as juju
+$ juju bootstrap microk8s micro
+Creating Juju controller "micro" on microk8s/localhost
+Bootstrap to Kubernetes cluster identified as microk8s/localhost
+Fetching Juju Dashboard 0.7.1
+Creating k8s resources for controller "controller-micro"
+Downloading images
+Starting controller pod
+Bootstrap agent now started
+Contacting Juju controller at 10.152.183.196 to verify accessibility...
+
+Bootstrap complete, controller "micro" is now available in namespace "controller-micro"
+
+Now you can run
+	juju add-model <model-name>
+to create a new model to deploy k8s workloads.
+```
+
+You can skip the next section and go directly to [Install Charms](#install-charms)
+
+## Other K8s clusters
 
 If you are feeling adventurous, or you hate snaps, you can follow these instructions instead:
 
@@ -47,14 +83,14 @@ Now you can run
 to create a new model to deploy k8s workloads.
 ```
 
+# Install charms
+
 To deploy charmed linstor, create a new model
 
 ```
 $ juju add-model linstor
 Added 'linstor' model with credential 'k8s' for user 'admin'
 ```
-
-# Install charms
 
 First you have to build the charms. You will have to re-build them if you make any changes
 
