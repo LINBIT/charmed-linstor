@@ -83,7 +83,7 @@ controllers = {self._linstor_api_url()}
             "K8S_AWAIT_ELECTION_SERVICE_NAME": self.app.name,
             "K8S_AWAIT_ELECTION_SERVICE_NAMESPACE": {"field": {"path": "metadata.namespace", "api-version": "v1"}},
             "K8S_AWAIT_ELECTION_SERVICE_PORTS_JSON": json.dumps(
-                [{"name": "linstor-api", "port": self.config["linstor-http-port"]}]
+                [{"name": "linstor-api", "port": _API_PORT}]
             ),
             "K8S_AWAIT_ELECTION_STATUS_ENDPOINT": ":9999",
         }
@@ -214,7 +214,7 @@ controllers = {self._linstor_api_url()}
             event.relation.data[self.app]["url"] = self._linstor_api_url()
 
     def _linstor_api_url(self):
-        return f"http://{self.app.name}.{self.model.name}.svc:{self.config['linstor-http-port']}"
+        return f"http://{self.app.name}.{self.model.name}.svc:{_API_PORT}"
 
 
 if __name__ == "__main__":

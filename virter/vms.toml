@@ -1,0 +1,9 @@
+[[vms]]
+vcpus = 4
+memory = "8G"
+boot_capacity = "30G"
+base_image = "charmed-linstor-base-image"
+disks = [
+    "name=static-kubernetes-storage,size=30G,bus=virtio",
+    "name=linstor-kubernetes-storage,size=30G,bus=virtio",
+]

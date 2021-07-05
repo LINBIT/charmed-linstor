@@ -13,6 +13,9 @@
         - /mnt/disks/pv3
         - /mnt/disks/pv4
         - /mnt/disks/pv5
+        - /mnt/disks/pv6
+        - /mnt/disks/pv7
+        - /mnt/disks/pv8
 
     - name: Create storage provisioner filesystem
       filesystem:
@@ -36,6 +39,9 @@
         - pv3
         - pv4
         - pv5
+        - pv6
+        - pv7
+        - pv8
 
     - name: Bind mount volumes
       mount:
@@ -50,5 +56,8 @@
         - pv3
         - pv4
         - pv5
+        - pv6
+        - pv7
+        - pv8
 
 - import_playbook: /kubespray/cluster.yml

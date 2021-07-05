@@ -19,7 +19,6 @@ class TestCharm(unittest.TestCase):
         self.harness.begin_with_initial_hooks()
 
     def test_is_ready(self):
-
         self.assertEqual(self.harness.model.unit.status, ActiveStatus())
 
 
