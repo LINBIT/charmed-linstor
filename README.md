@@ -6,7 +6,7 @@ Charmed Operators for Kubernetes to deploy a LINSTOR cluster.
 
 ## MicroK8s Quickstart (using snaps :scream:)
 
-Follow the intructions [here](https://juju.is/docs/sdk/dev-setup).
+Follow the instructions [here](https://juju.is/docs/sdk/dev-setup).
 
 TLDR:
 
@@ -128,6 +128,9 @@ Deploying "linstor-csi-controller" from local charm "linstor-csi-controller", re
 $ juju deploy ./linstor-csi-node.charm --resource linstor-csi-image=examples/linstor-csi-node.json --resource csi-node-driver-registrar-image=k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.1.0 --resource csi-liveness-probe-image=k8s.gcr.io/sig-storage/livenessprobe:v2.2.0
 Located local charm "linstor-csi-node", revision 0
 Deploying "linstor-csi-node" from local charm "linstor-csi-node", revision 0
+$ juju deploy ./linstor-ha-controller.charm --resource linstor-ha-controller-image=examples/linstor-ha-controller.json
+Located local charm "linstor-ha-controller", revision 0
+Deploying "linstor-ha-controller" from local charm "linstor-ha-controller", revision 0
 ```
 
 Now you will have the LINSTOR controller charm waiting and a database relation, and the CSI charms waiting for a
@@ -135,48 +138,50 @@ controller relation. The following commands configures these relations.
 
 ```
 $ juju status
-Model    Controller  Cloud/Region  Version  SLA          Timestamp
-linstor  k8s         k8s           2.9.7    unsupported  16:21:21+02:00
+Model    Controller  Cloud/Region        Version  SLA          Timestamp
+linstor  micro       microk8s/localhost  2.9.0    unsupported  12:54:37Z
 
-App                     Version                    Status   Scale  Charm                   Store     Channel  Rev  OS          Address        Message
-linstor-controller                                 blocked      1  linstor-controller      local                0  kubernetes                 waiting for database relation
-linstor-csi-controller                             blocked      1  linstor-csi-controller  local                0  kubernetes                 waiting for linstor relation
-linstor-csi-node                                   blocked      1  linstor-csi-node        local                0  kubernetes                 waiting for linstor relation
-linstor-satellite       linstor-satellite:v1.13.0  active       2  linstor-satellite       local                4  kubernetes
-postgresql-k8s          .../postgresql@ed0e37f     active       1  postgresql-k8s          charmhub  stable     3  kubernetes  10.233.14.102
+App                     Version                    Status   Scale  Charm                   Store     Channel  Rev  OS          Address  Message
+linstor-controller                                 blocked      1  linstor-controller      local                0  kubernetes           waiting for database relation
+linstor-csi-controller                             blocked      1  linstor-csi-controller  local                0  kubernetes           waiting for linstor relation
+linstor-csi-node                                   blocked      1  linstor-csi-node        local                0  kubernetes           waiting for linstor relation
+linstor-ha-controller                              blocked      1  linstor-ha-controller   local                0  kubernetes           waiting for linstor relation
+linstor-satellite       linstor-satellite:v1.13.0  active       1  linstor-satellite       local                0  kubernetes
+postgresql-k8s          .../postgresql@ed0e37f     active       1  postgresql-k8s          charmhub  stable     3  kubernetes
 
-Unit                       Workload  Agent  Address         Ports     Message
-linstor-controller/0*      blocked   idle                             waiting for database relation
-linstor-csi-controller/0*  blocked   idle                             waiting for linstor relation
-linstor-csi-node/0*        blocked   idle                             waiting for linstor relation
-linstor-satellite/0*       active    idle   192.168.122.11  3366/TCP
-linstor-satellite/1        active    idle   192.168.122.10  3366/TCP
-postgresql-k8s/0*          active    idle   10.233.84.6     5432/TCP  Pod configured
+Unit                       Workload  Agent  Address       Ports     Message
+linstor-controller/0*      blocked   idle                           waiting for database relation
+linstor-csi-controller/0*  blocked   idle                           waiting for linstor relation
+linstor-csi-node/0*        blocked   idle                           waiting for linstor relation
+linstor-ha-controller/0*   blocked   idle                           waiting for linstor relation
+linstor-satellite/0*       active    idle   10.43.224.37  3366/TCP
+postgresql-k8s/0*          active    idle   10.1.142.163  5432/TCP  Pod configured
 $ juju add-relation linstor-controller:database postgresql-k8s:db
 $ juju add-relation linstor-controller:linstor-api linstor-csi-controller:linstor
 $ juju add-relation linstor-controller:linstor-api linstor-csi-node:linstor
+$ juju add-relation linstor-controller:linstor-api linstor-ha-controller:linstor
 $ # Wait a bit, and everything should be ready to go
 $ juju status
-Model    Controller  Cloud/Region  Version  SLA          Timestamp
-linstor  k8s         k8s           2.9.7    unsupported  16:26:52+02:00
+Model    Controller  Cloud/Region        Version  SLA          Timestamp
+linstor  micro       microk8s/localhost  2.9.0    unsupported  13:03:34Z
 
-App                     Version                     Status  Scale  Charm                   Store     Channel  Rev  OS          Address        Message
-linstor-controller      linstor-controller:v1.13.0  active      1  linstor-controller      local                0  kubernetes  10.233.3.13
-linstor-csi-controller  linstor-csi:v0.13.1         active      1  linstor-csi-controller  local                0  kubernetes
-linstor-csi-node        linstor-csi:v0.13.1         active      2  linstor-csi-node        local                0  kubernetes
-linstor-satellite       linstor-satellite:v1.13.0   active      2  linstor-satellite       local                5  kubernetes
-postgresql-k8s          .../postgresql@ed0e37f      active      1  postgresql-k8s          charmhub  stable     3  kubernetes  10.233.14.102
+App                     Version                         Status  Scale  Charm                   Store     Channel  Rev  OS          Address        Message
+linstor-controller      linstor-controller:v1.13.0      active      1  linstor-controller      local                1  kubernetes  10.152.183.69
+linstor-csi-controller  linstor-csi:v0.13.1             active      1  linstor-csi-controller  local                0  kubernetes
+linstor-csi-node        linstor-csi:v0.13.1             active      1  linstor-csi-node        local                0  kubernetes
+linstor-ha-controller   linstor-k8s-ha-controller:v...  active      1  linstor-ha-controller   local                0  kubernetes
+linstor-satellite       linstor-satellite:v1.13.0       active      1  linstor-satellite       local                0  kubernetes
+postgresql-k8s          .../postgresql@ed0e37f          active      1  postgresql-k8s          charmhub  stable     3  kubernetes
 
-Unit                       Workload  Agent  Address         Ports     Message
-linstor-controller/0*      active    idle   10.233.77.12    3370/TCP
-linstor-csi-controller/0*  active    idle   10.233.77.14
-linstor-csi-node/0*        active    idle   10.233.77.15
-linstor-csi-node/1         active    idle   10.233.84.7
-linstor-satellite/8*       active    idle   192.168.122.10  3366/TCP
-linstor-satellite/9        active    idle   192.168.122.11  3366/TCP
-postgresql-k8s/0*          active    idle   10.233.84.6     5432/TCP  Pod configured
+Unit                       Workload  Agent  Address       Ports     Message
+linstor-controller/1*      active    idle   10.1.142.157  3370/TCP
+linstor-csi-controller/0*  active    idle   10.1.142.158
+linstor-csi-node/0*        active    idle   10.1.142.153
+linstor-ha-controller/0*   active    idle   10.1.142.180
+linstor-satellite/0*       active    idle   10.43.224.37  3366/TCP
+postgresql-k8s/0*          active    idle   10.1.142.163  5432/TCP  Pod configured
 $ # We should also add the satellites to the controller, which can also be done using a relation
-$ juju add-relation linstor-controller:linstor-api linstor-satellite:controller
+$ juju add-relation linstor-controller:linstor-api linstor-satellite:linstor
 $ kubectl exec deployment/linstor-controller -- linstor n l
 +------------------------------------------------------------------------+
 | Node                | NodeType  | Addresses                   | State  |

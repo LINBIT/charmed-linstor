@@ -30,9 +30,10 @@ class LinstorControllerCharm(charm.CharmBase):
         super().__init__(*args)
 
         # TODO support both mysql and postgres
-        self._stored.set_default(db_host=None, db_port=None, db_database=None, db_user=None, db_password=None)
+        self._stored.set_default(db_info=None)
 
         self.framework.observe(self.on.database_relation_changed, self._on_database_relation_changed)
+        self.framework.observe(self.on.database_relation_broken, self._on_database_relation_broken)
         self.framework.observe(self.on.linstor_api_relation_changed, self._on_linstor_api_relation_changed)
 
         self.linstor_controller_image = OCIImageResource(self, "linstor-controller-image")
@@ -48,18 +49,20 @@ class LinstorControllerCharm(charm.CharmBase):
             event.defer()
             return
 
-        if not self._stored.db_database:
+        if not self._stored.db_info:
             self.unit.status = model.BlockedStatus("waiting for database relation")
             event.defer()
             return
 
         # TODO: linstor client conf + HTTP endpoint
+        db_info = self._stored.db_info
+
         linstor_conf = toml.dumps({
             "db": {
                 "connection_url":
-                    f"jdbc:postgresql://{self._stored.db_host}:{self._stored.db_port}/{self._stored.db_database}",
-                "user": self._stored.db_user,
-                "password": self._stored.db_password,
+                    f"jdbc:postgresql://{db_info['host']}:{db_info['port']}/{db_info['database']}",
+                "user": db_info['user'],
+                "password": db_info['password'],
             },
         })
 
@@ -131,16 +134,13 @@ controllers = {self._linstor_api_url()}
                     "serviceAccount": {
                         "roles": [
                             {
-                                "name": "linstor-controller",
+                                "name": "linstor-controller-leader-elector",
                                 "rules": [
                                     {
                                         "apiGroups": ["coordination.k8s.io"],
                                         "resources": ["leases"],
                                         "verbs": [
                                             "get",
-                                            "list",
-                                            "watch",
-                                            "delete",
                                             "update",
                                             "create",
                                         ],
@@ -189,17 +189,27 @@ controllers = {self._linstor_api_url()}
         if self.unit.is_leader() and event.relation.data[self.app].get("database") != self.app.name:
             event.relation.data[self.app].update({"database": self.app.name})
 
-        self._stored.db_host = event.relation.data[event.app].get("host")
-        self._stored.db_port = event.relation.data[event.app].get("port")
-        self._stored.db_database = event.relation.data[event.app].get("database")
-        self._stored.db_user = event.relation.data[event.app].get("user")
-        self._stored.db_password = event.relation.data[event.app].get("password")
+        old_info = self._stored.db_info
 
+        self._stored.db_info = {
+            "host": event.relation.data[event.app].get("host"),
+            "port": event.relation.data[event.app].get("port"),
+            "database": event.relation.data[event.app].get("database"),
+            "user": event.relation.data[event.app].get("user"),
+            "password": event.relation.data[event.app].get("password"),
+        }
+
+        if old_info != self._stored.db_info:
+            logger.debug("db connection changed, run _set_pod_spec")
+            self._set_pod_spec(event)
+
+    def _on_database_relation_broken(self, event: charm.RelationBrokenEvent):
+        self._stored.db_info = None
         self._set_pod_spec(event)
 
     def _on_linstor_api_relation_changed(self, event: charm.RelationChangedEvent):
         if self.unit.is_leader():
-            event.relation.data[self.app].update({"url": self._linstor_api_url()})
+            event.relation.data[self.app]["url"] = self._linstor_api_url()
 
     def _linstor_api_url(self):
         return f"http://{self.app.name}.{self.model.name}.svc:{self.config['linstor-http-port']}"

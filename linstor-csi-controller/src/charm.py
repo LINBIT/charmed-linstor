@@ -30,6 +30,7 @@ class LinstorCSIControllerCharm(charm.CharmBase):
         self._stored.set_default(linstor_url=None)
 
         self.framework.observe(self.on.linstor_relation_changed, self._on_linstor_relation_changed)
+        self.framework.observe(self.on.linstor_relation_broken, self._on_linstor_relation_broken)
 
         self.linstor_csi_image = OCIImageResource(self, "linstor-csi-image")
         self.csi_attacher_image = OCIImageResource(self, "csi-attacher-image")
@@ -233,7 +234,7 @@ class LinstorCSIControllerCharm(charm.CharmBase):
                                 ],
                             },
                             {
-                                "name": "csi-leader-elector",
+                                "name": "csi-controller-leader-elector",
                                 "rules": [
                                     {'apiGroups': ['coordination.k8s.io'], 'resources': ['leases'],
                                      'verbs': ['get', 'watch', 'list', 'delete', 'update', 'create']},
@@ -249,9 +250,13 @@ class LinstorCSIControllerCharm(charm.CharmBase):
 
     def _on_linstor_relation_changed(self, event: charm.RelationChangedEvent):
         url = event.relation.data[event.app].get("url")
-        if url:
-            self._stored.linstor_url = url
 
+        if self._stored.linstor_url != url:
+            self._stored.linstor_url = url
+            self._set_pod_spec(event)
+
+    def _on_linstor_relation_broken(self, event: charm.RelationBrokenEvent):
+        self._stored.linstor_url = None
         self._set_pod_spec(event)
 
 

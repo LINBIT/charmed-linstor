@@ -1,6 +1,6 @@
 # Copyright 2021 LINBIT HA-Solutions GmbH
 # See LICENSE file for licensing details.
-name: linstor-satellite
+name: linstor-ha-controller
 description: |
   TEMPLATE-TODO: fill out the charm's description
 summary: |
@@ -16,18 +16,14 @@ series:
 requires:
   linstor:
     interface: linstor-api
-    optional: true
+    limit: 1
 
 deployment:
-  type: daemon
+  type: stateless
   service: omit
 
 resources:
-  linstor-satellite-image:
+  linstor-ha-controller-image:
     type: oci-image
-    description: LINSTOR Satellite Image
-    upstream-source: drbd.io/linstor-satellite:v1.13.0
-  drbd-injector-image:
-    type: oci-image
-    description: DRBD Injector Image
-    upstream-source: drbd.io/drbd9-focal:v9.0.29
+    description: LINSTOR Controller Image
+    upstream-source: drbd.io/linstor-k8s-ha-controller:v0.1.3
