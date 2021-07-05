@@ -1,10 +1,6 @@
 # Copyright 2021 LINBIT HA-Solutions GmbH
 # See LICENSE file for licensing details.
 #
-# TEMPLATE-TODO: change this example to suit your needs.
-# If you don't need a config, you can remove the file entirely.
-# It ties in to the example _on_config_changed handler in src/charm.py
-#
 # Learn more about config at: https://juju.is/docs/sdk/config
 
 options:
@@ -16,3 +12,19 @@ options:
     default: false
     description: Compile the DBRD module (instead of loading from packages)
     type: boolean
+  storage-pools:
+    type: string
+    default: ''
+    description: >
+      A list of storage pools to configure. Entries are space-separated, every entry is itself a comma-separated list of key-value pairs.
+      The possible keys and their meaning are:
+      - provider (required): LINSTOR storage pool provider, possible values are: DISKLESS, EXOS, FILE, FILE_THIN, LVM, LVM_THIN, OPENFLEX_TARGET, SPDK, ZFS, ZFS_THIN
+      - name (required): The name assigned to the storage pool in LINSTOR.
+      - provider_name: Provider specific name of the storage pool. For example, the name of the Volume Group for LVM pools, the zpool for ZFS pools, etc. Required except when creating a diskless pool.
+      - devices: Optionally, let LINSTOR create the provider pool on the given device. Multiple devices can be specified.
+
+      Example 1: To configure a LINSTOR LVMTHIN storage pool named "thinpool" based on an existing LVM Thin Pool "storage/thinpool", use:
+        provider=LVM_THIN,provider_name=storage/thinpool,name=thinpool
+
+      Example 2: To configure a LINSTOR ZFS storage pool named "ssds" based on unconfigured devices "/dev/sdc" and "/dev/sdd" use:
+        provider=ZFS_THIN,provider_name=ssds,name=ssds,devices=/dev/sdc,devices=/dev/sdd

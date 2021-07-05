@@ -14,6 +14,7 @@ develop a new k8s charm using the Operator Framework:
 
 import logging
 import typing
+from collections import namedtuple
 
 import kubernetes
 import linstor
@@ -23,6 +24,8 @@ from ops import charm, framework, main, model
 logger = logging.getLogger(__name__)
 
 __version__ = "1.0.0-alpha0"
+
+StoragePoolConfig = namedtuple("StoragePoolConfig", ("name", "provider", "provider_name", "devices"))
 
 
 class LinstorSatelliteCharm(charm.CharmBase):
@@ -148,6 +151,7 @@ class LinstorSatelliteCharm(charm.CharmBase):
         self.unit.status = model.ActiveStatus()
 
     def _ensure_storage_pools(self):
+        """Ensure each unit has the configured storage pools available"""
         if not self._stored.linstor_url:
             return
 
@@ -158,8 +162,34 @@ class LinstorSatelliteCharm(charm.CharmBase):
 
         with self._linstor_client(self._stored.linstor_url) as client:
             pool_list_response = client.storage_pool_list_raise(filter_by_nodes=[pod.spec.node_name])
+            actual_pools = pool_list_response.storage_pools
 
+        expected_pools = _parse_storage_pool_config(self.config["storage-pools"])
 
+        for expected_pool in expected_pools:
+            if any(expected_pool.name == x.name for x in actual_pools):
+                logger.debug("pool %s already exists on node %s, skipping", expected_pool.name, pod.spec.node_name)
+                continue
+
+            with self._linstor_client(self._stored.linstor_url) as client:
+                if expected_pool.devices:
+                    resp = client.physical_storage_create_device_pool(
+                        node_name=pod.spec.node_name,
+                        provider_kind=expected_pool.provider,
+                        device_paths=expected_pool.devices,
+                        # Strip slashes from provider pool names, LINSTOR does not expect them here,
+                        # i.e. a LVMTHIN pool with pool name "thinpool" will get an LV "linstor_thinpool/thinpool".
+                        pool_name=expected_pool.provider_name[expected_pool.provider_name.rfind("/") + 1:],
+                        storage_pool_name=expected_pool.name,
+                    )
+                else:
+                    resp = client.storage_pool_create(
+                        node_name=pod.spec.node_name,
+                        storage_pool_name=expected_pool.name,
+                        storage_driver=expected_pool.provider,
+                        driver_pool_name=expected_pool.provider_name,
+                    )
+                _assert_no_linstor_error(resp)
 
     def _on_controller_relation_changed(self, event: charm.RelationChangedEvent):
         self._stored.linstor_url = event.relation.data[event.app].get("url")
@@ -220,7 +250,46 @@ class LinstorSatelliteCharm(charm.CharmBase):
         )
 
 
-def _assert_no_linstor_error(response: [linstor.ApiCallResponse]):
+def _parse_storage_pool_config(conf_str: str) -> typing.List[StoragePoolConfig]:
+    pools = conf_str.split()
+
+    result = []
+
+    for pool_str in pools:
+        parts = pool_str.split(",")
+        pool = {
+            "name": None,
+            "provider": None,
+            "provider_name": None,
+            "devices": [],
+        }
+
+        for part in parts:
+            key, val = part.split("=", 1)
+            if key not in StoragePoolConfig._fields:
+                raise ValueError(f"unknown key {key}, must be one of: {StoragePoolConfig._fields}")
+
+            if key == "devices":
+                pool[key].append(val)
+            else:
+                pool[key] = val
+
+        if pool["name"] is None:
+            raise ValueError(f"pool config {pool_str} is missing a name")
+        if pool["provider"] is None:
+            raise ValueError(f"pool config {pool_str} is missing a provider")
+
+        result.append(StoragePoolConfig(
+            pool["name"],
+            pool["provider"],
+            pool["provider_name"],
+            pool["devices"],
+        ))
+
+    return result
+
+
+def _assert_no_linstor_error(response: typing.List[linstor.ApiCallResponse]):
     if not linstor.Linstor.all_api_responses_no_error(response):
         raise linstor.LinstorError(f"got failure response from Linstor {response}")
 
