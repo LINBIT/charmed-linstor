@@ -2,13 +2,14 @@
 # See LICENSE file for licensing details.
 name: linstor-controller
 description: |
-  TEMPLATE-TODO: fill out the charm's description
+  This Charm deploys a LINSTOR Controller on Kubernetes clusters.
 summary: |
-  TEMPLATE-TODO: fill out the charm's summary
+  Kubernetes Charm for LINSTOR Controllers
 tags:
   - storage
+  - kubernetes
 maintainers:
-  - "Moritz Wanzenböck <moritz.wanzenboeck@linbit.com>"
+  - "LINBIT HA-Solutions"
 
 series:
   - kubernetes
@@ -31,4 +32,5 @@ resources:
   linstor-controller-image:
     type: oci-image
     description: LINSTOR Controller Image
+    auto-fetch: true
     upstream-source: drbd.io/linstor-controller:v1.13.0

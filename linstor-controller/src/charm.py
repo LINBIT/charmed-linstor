@@ -22,6 +22,8 @@ logger = logging.getLogger(__name__)
 
 __version__ = "1.0.0-alpha0"
 
+_API_PORT = 3370
+
 
 class LinstorControllerCharm(charm.CharmBase):
     _stored = framework.StoredState()
@@ -97,7 +99,7 @@ controllers = {self._linstor_api_url()}
                             "imageDetails": linstor_controller_image,
                             "args": ["startController"],
                             "ports": [
-                                {"name": "linstor-api", "containerPort": self.model.config["linstor-http-port"]},
+                                {"name": "linstor-api", "containerPort": _API_PORT},
                             ],
                             "volumeConfig": [
                                 {
@@ -171,8 +173,8 @@ controllers = {self._linstor_api_url()}
                                         {
                                             "name": "linstor-api",
                                             "protocol": "TCP",
-                                            "port": self.config["linstor-http-port"],
-                                            "targetPort": self.config["linstor-http-port"],
+                                            "port": _API_PORT,
+                                            "targetPort": _API_PORT,
                                         },
                                     ],
                                 },
