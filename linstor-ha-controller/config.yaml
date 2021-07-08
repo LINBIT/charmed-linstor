@@ -8,7 +8,3 @@
 # Learn more about config at: https://juju.is/docs/sdk/config
 
 options:
-  linstor-http-port:
-    default: 3370
-    description: Port for the LINSTOR HTTP API
-    type: int
