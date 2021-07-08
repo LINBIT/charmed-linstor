@@ -1,25 +1,49 @@
-# linstor-satellite
+# LINSTOR CSI Node
 
 ## Description
+This Charm deploys LINSTOR Satellites on Kubernetes clusters.
 
-TODO: Describe your charm in a few paragraphs of Markdown
+Satellites are part of a [LINSTOR] cluster.
 
 ## Usage
+This Charm will be part of a [bundle] that includes all components for a fully operational LINSTOR cluster on Kubernetes.
 
-TODO: Provide high-level usage, such as required config or relations
+Follow these steps to add just a LINSTOR Controller to your cluster:
+```
+$ juju deploy ./linstor-satellite.charm
+```
+
+This will create a daemon set, i.e. every node in the kubernetes cluster will
+start one instance of this application.
+
+A LINSTOR Satellite has to be registered on a LINSTOR Controller to make it useful.
+Adding a relation to a LINSTOR Controller will register the Satellite on that
+controller.
+
+```
+$ juju add-relation linstor-controller:linstor-api linstor-satellite:linstor
+```
+
+## Configuration
+
+* `linstor-control-port` (default **3366**):
+  The host port opened by the satellite for communication with the LINSTOR Controller
+
+* `compile-module` (default **false**):
+  Compile the DBRD module (instead of loading from packages)
 
 
-## Developing
+* `storage-pools` (default **""**):
+  A list of storage pools to configure. Entries are space-separated, every entry is itself a comma-separated list of key-value pairs.
+  The possible keys and their meaning are:
+  - provider (required): LINSTOR storage pool provider, possible values are: DISKLESS, EXOS, FILE, FILE_THIN, LVM, LVM_THIN, OPENFLEX_TARGET, SPDK, ZFS, ZFS_THIN
+  - name (required): The name assigned to the storage pool in LINSTOR.
+  - provider_name: Provider specific name of the storage pool. For example, the name of the Volume Group for LVM pools, the zpool for ZFS pools, etc. Required except when creating a diskless pool.
+  - devices: Optionally, let LINSTOR create the provider pool on the given device. Multiple devices can be specified.
 
-Create and activate a virtualenv with the development requirements:
+      Example 1: To configure a LINSTOR LVMTHIN storage pool named "thinpool" based on an existing LVM Thin Pool "storage/thinpool", use:
+        provider=LVM_THIN,provider_name=storage/thinpool,name=thinpool
 
-    virtualenv -p python3 venv
-    source venv/bin/activate
-    pip install -r requirements-dev.txt
+      Example 2: To configure a LINSTOR ZFS storage pool named "ssds" based on unconfigured devices "/dev/sdc" and "/dev/sdd" use:
+        provider=ZFS_THIN,provider_name=ssds,name=ssds,devices=/dev/sdc,devices=/dev/sdd
 
-## Testing
-
-The Python operator framework includes a very nice harness for testing
-operator behaviour without full deployment. Just `run_tests`:
-
-    ./run_tests

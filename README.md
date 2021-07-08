@@ -2,6 +2,42 @@
 
 Charmed Operators for Kubernetes to deploy a LINSTOR cluster.
 
+# Usage
+
+The charms are currently ***only available by building from source***. That also means no all-in-one bundle
+(for now).
+
+To build the charms, install [`charmcraft`] and run the following command in the checked out repository:
+
+```
+$ for charmmeta in */metadata.yaml ; do charmcraft pack -p $(dirname $charmmeta); done
+Created 'linstor-controller.charm'.
+Created 'linstor-csi-controller.charm'.
+Created 'linstor-csi-node.charm'.
+Created 'linstor-ha-controller.charm'.
+Created 'linstor-satellite.charm'.
+```
+
+Now, assuming you have `juju` already configured for your cluster, run:
+
+```
+$ juju add-model linstor
+$ juju deploy postgresql-k8s
+$ juju deploy ./linstor-controller.charm --resource linstor-controller-image=examples/linstor-controller.json
+$ juju deploy ./linstor-satellite.charm --resource linstor-satellite-image=examples/linstor-satellite.json --resource drbd-injector-image=examples/drbd-injector.json --config compile-module=true
+$ juju deploy ./linstor-csi-controller.charm --resource linstor-csi-image=examples/linstor-csi-controller.json --resource csi-snapshotter-image=k8s.gcr.io/sig-storage/csi-snapshotter:v3.0.3 --resource csi-resizer-image=k8s.gcr.io/sig-storage/csi-resizer:v1.1.0 --resource csi-provisioner-image=k8s.gcr.io/sig-storage/csi-provisioner:v2.1.2 --resource csi-liveness-probe-image=k8s.gcr.io/sig-storage/livenessprobe:v2.2.0 --resource csi-attacher-image=k8s.gcr.io/sig-storage/csi-attacher:v3.1.0
+$ juju deploy ./linstor-csi-node.charm --resource linstor-csi-image=examples/linstor-csi-node.json --resource csi-node-driver-registrar-image=k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.1.0 --resource csi-liveness-probe-image=k8s.gcr.io/sig-storage/livenessprobe:v2.2.0
+$ juju deploy ./linstor-ha-controller.charm --resource linstor-ha-controller-image=examples/linstor-ha-controller.json
+$ juju add-relation linstor-controller:database postgresql-k8s:db
+$ juju add-relation linstor-controller:linstor-api linstor-csi-controller:linstor
+$ juju add-relation linstor-controller:linstor-api linstor-csi-node:linstor
+$ juju add-relation linstor-controller:linstor-api linstor-ha-controller:linstor
+```
+
+For more information, take a look at the READMEs in each directory.
+
+[`charmcraft`]: https://github.com/canonical/charmcraft
+
 # Development
 
 ## MicroK8s Quickstart (using snaps :scream:)

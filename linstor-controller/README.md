@@ -4,11 +4,11 @@
 This Charm deploys a [LINSTOR] Controller on Kubernetes clusters.
 
 ## Usage
-This Charm is part of a [bundle] that includes all components for a fully operational LINSTOR cluster on Kubernetes.
+This Charm will be part of a [bundle] that includes all components for a fully operational LINSTOR cluster on Kubernetes.
 
 Follow these steps to add just a LINSTOR Controller to your cluster:
 ```
-$ juju deploy linstor-controller
+$ juju deploy linstor-controller.charm
 ```
 
 A LINSTOR Controller requires a database to store information about the cluster and any volumes provision in it. This
@@ -19,3 +19,6 @@ $ juju add-relation linstor-controller:database postgresql-k8s:db
 
 [LINSTOR]: https://linbit.com/linstor/
 [`postgresql-k8s`]: https://charmhub.io/postgresql-k8s
+
+## Configuration
+N/A

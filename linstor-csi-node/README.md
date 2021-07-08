@@ -1,25 +1,33 @@
-# linstor-csi-controller
+# LINSTOR CSI Node
 
 ## Description
+This Charm deploys LINSTOR CSI Nodes on Kubernetes clusters.
 
-TODO: Describe your charm in a few paragraphs of Markdown
+The CSI Controller is part of a CSI driver for [LINSTOR]. It enables using
+LINSTOR to provision standard kubernetes resources (StorageClasses, PersistentVolumeClaims)
 
 ## Usage
+This Charm will be part of a [bundle] that includes all components for a fully operational LINSTOR cluster on Kubernetes.
 
-TODO: Provide high-level usage, such as required config or relations
+Follow these steps to add just LINSTOR CSI Nodes to your cluster:
+```
+$ juju deploy ./linstor-csi-node.charm
+```
 
+A LINSTOR CSI Node requires connection to the LINSTOR API:
+```
+$ juju add-relation linstor-controller:linstor-api linstor-csi-node:linstor
+```
 
-## Developing
+This will create a daemon set, i.e. every node in the kubernetes cluster will
+start one instance of this application.
 
-Create and activate a virtualenv with the development requirements:
+## Requirements
 
-    virtualenv -p python3 venv
-    source venv/bin/activate
-    pip install -r requirements-dev.txt
+Every LINSTOR CSI Node instance has to run on the same node as a registered
+[LINSTOR Satellite](../linstor-satellite). If no matching Satellite is configured
+on the Controller, the pod will continuously crash until the satellite becomes
+available.
 
-## Testing
-
-The Python operator framework includes a very nice harness for testing
-operator behaviour without full deployment. Just `run_tests`:
-
-    ./run_tests
+## Configuration
+N/A
