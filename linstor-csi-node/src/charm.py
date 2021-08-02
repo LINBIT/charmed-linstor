@@ -75,9 +75,9 @@ class LinstorCSINodeCharm(charm.CharmBase):
 
         publish_dir = {
             "name": "publish-dir",
-            "mountPath": "/var/lib/kubelet",
+            "mountPath": self.config["publish-path"],
             "hostPath": {
-                "path": "/var/lib/kubelet",
+                "path": self.config["publish-path"],
                 "type": "DirectoryOrCreate",
             }
         }

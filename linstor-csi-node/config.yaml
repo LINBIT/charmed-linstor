@@ -8,3 +8,10 @@
 # Learn more about config at: https://juju.is/docs/sdk/config
 
 options:
+  publish-path:
+    type: string
+    default: /var/lib/kubelet
+    description: |
+      The path (on the host) where kubelet expects the volumes to be published.
+
+      For microk8s, use /var/snap/microk8s/common/var/lib/kubelet.
