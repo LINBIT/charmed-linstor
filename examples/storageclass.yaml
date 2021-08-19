@@ -6,5 +6,5 @@ provisioner: linstor.csi.linbit.com
 allowVolumeExpansion: true
 volumeBindingMode: Immediate
 parameters:
-  autoPlace: "1"
+  autoPlace: "2"
   storagePool: thinpool

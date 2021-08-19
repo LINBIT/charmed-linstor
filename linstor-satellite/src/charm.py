@@ -41,6 +41,7 @@ class LinstorSatelliteCharm(charm.CharmBase):
 
         self.framework.observe(self.on.linstor_relation_changed, self._on_linstor_relation_changed)
         self.framework.observe(self.on.linstor_relation_broken, self._on_linstor_relation_broken)
+        self.framework.observe(self.on.satellite_relation_changed, self._on_satellite_relation_changed)
 
         self.framework.observe(self.on.install, self._set_pod_spec)
         self.framework.observe(self.on.upgrade_charm, self._set_pod_spec)
@@ -251,6 +252,9 @@ class LinstorSatelliteCharm(charm.CharmBase):
             logger.debug("Controller seems to be down already, skipping unregistering node")
 
         self._stored.linstor_url = None
+
+    def _on_satellite_relation_changed(self, event: charm.RelationChangedEvent):
+        logger.info(f"satellite relation: {event}")
 
     def _get_unit_pod(self) -> typing.Optional[kubernetes.client.models.V1Pod]:
         core_v1 = _core_v1_api()
