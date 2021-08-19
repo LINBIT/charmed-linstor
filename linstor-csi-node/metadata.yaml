@@ -10,17 +10,21 @@ tags:
 maintainers:
   - "Moritz Wanzenböck <moritz.wanzenboeck@linbit.com>"
 
-series:
-  - kubernetes
+
+containers:
+  linstor-csi-plugin:
+    resource: linstor-csi-image
+  csi-node-driver-registrar:
+    resource: csi-node-driver-registrar-image
 
 requires:
   linstor:
     interface: linstor-api
     limit: 1
-
-deployment:
-  type: daemon
-  service: omit
+  satellite:
+    interface: linstor-satellites
+    optional: true
+    limit: 1
 
 resources:
   linstor-csi-image:
@@ -30,8 +34,4 @@ resources:
   csi-node-driver-registrar-image:
     type: oci-image
     description: CSI Node driver registrar Image
-    upstream-source: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.1.0
-  csi-liveness-probe-image:
-    type: oci-image
-    description: CSI liveness probe Image
-    upstream-source: k8s.gcr.io/sig-storage/livenessprobe:v2.2.0
+    upstream-source: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.3.0

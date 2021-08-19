@@ -18,6 +18,11 @@ requires:
     interface: linstor-api
     optional: true
 
+provides:
+  satellite:
+    interface: linstor-satellites
+    optional: true
+
 deployment:
   type: daemon
   service: omit
