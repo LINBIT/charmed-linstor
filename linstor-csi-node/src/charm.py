@@ -49,10 +49,10 @@ class LinstorCSINodeCharm(charm.CharmBase):
         self.unit.status = model.MaintenanceStatus("applying k8s resources")
         # Create the Kubernetes resources needed for the CSI Drivers
         raw_client = _k8s_client()
-        storagev1beta = kubernetes.client.StorageV1beta1Api(raw_client)
+        storagev1 = kubernetes.client.StorageV1Api(raw_client)
 
         try:
-            storagev1beta.create_csi_driver(self.csi_driver)
+            storagev1.create_csi_driver(self.csi_driver)
         except kubernetes.client.exceptions.ApiException as e:
             if e.status == 409:
                 logger.info("csi driver already exists")
@@ -62,10 +62,10 @@ class LinstorCSINodeCharm(charm.CharmBase):
     def _remove(self, event: charm.RemoveEvent):
         """Clean up created resources on remove"""
         raw_client = _k8s_client()
-        storagev1beta = kubernetes.client.StorageV1beta1Api(raw_client)
+        storagev1 = kubernetes.client.StorageV1Api(raw_client)
 
         try:
-            storagev1beta.delete_csi_driver(self.csi_driver.metadata.name)
+            storagev1.delete_csi_driver(self.csi_driver.metadata.name)
         except kubernetes.client.exceptions.ApiException as e:
             # Ignore errors if:
             # * the resource doesn't exist in the first place
@@ -80,7 +80,7 @@ class LinstorCSINodeCharm(charm.CharmBase):
         except kubernetes.client.exceptions.ApiException as e:
             return self.raise_or_report_trust_issue(event, e)
 
-        if s.metadata.labels.get("charms.linbit.com/patch-applied") != "true":
+        if s.metadata.labels.get("charms.linbit.com/patch-applied") != "1":
             self._patch_sts(event, apps_api, s)
 
         if self._stored.linstor_satellites and len(self._stored.linstor_satellites) != s.spec.replicas:
@@ -149,7 +149,18 @@ class LinstorCSINodeCharm(charm.CharmBase):
             return
 
         self.unit.status = model.MaintenanceStatus("patching stateful set")
-        s.metadata.labels["charms.linbit.com/patch-applied"] = "true"
+        s.metadata.labels["charms.linbit.com/patch-applied"] = "1"
+
+        # Apply the default tolerations of a DaemonSet:
+        # https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/#taints-and-tolerations
+        s.spec.template.spec.tolerations = [
+            kubernetes.client.V1Toleration(key="node.kubernetes.io/not-ready", effect="NoExecute"),
+            kubernetes.client.V1Toleration(key="node.kubernetes.io/unreachable", effect="NoExecute"),
+            kubernetes.client.V1Toleration(key="node.kubernetes.io/disk-pressure", effect="NoSchedule"),
+            kubernetes.client.V1Toleration(key="node.kubernetes.io/memory-pressure", effect="NoSchedule"),
+            kubernetes.client.V1Toleration(key="node.kubernetes.io/unschedulable", effect="NoSchedule"),
+        ]
+
         s.spec.template.spec.volumes.extend([
             kubernetes.client.V1Volume(
                 name="publish-dir",
@@ -266,13 +277,13 @@ class LinstorCSINodeCharm(charm.CharmBase):
             return f.read().strip()
 
     @property
-    def csi_driver(self) -> kubernetes.client.V1beta1CSIDriver:
-        return kubernetes.client.V1beta1CSIDriver(
+    def csi_driver(self) -> kubernetes.client.V1CSIDriver:
+        return kubernetes.client.V1CSIDriver(
             metadata=kubernetes.client.V1ObjectMeta(
                 name="linstor.csi.linbit.com",
                 labels={"app.kubernetes.io/component": "cluster-config", "app.kubernetes.io/instance": self.app.name},
             ),
-            spec=kubernetes.client.V1beta1CSIDriverSpec(
+            spec=kubernetes.client.V1CSIDriverSpec(
                 attach_required=True,
                 pod_info_on_mount=True,
                 volume_lifecycle_modes=["Persistent"],
@@ -300,7 +311,7 @@ class LinstorCSINodeCharm(charm.CharmBase):
         affinity = s.spec.template.spec.affinity
 
         if not any(
-                term.label_selector.get("app.kubernetes.io/name") == self._stored.satellite_app_name
+                term.label_selector.match_labels.get("app.kubernetes.io/name") == self._stored.satellite_app_name
                 for term in
                 affinity.pod_affinity.required_during_scheduling_ignored_during_execution
         ):

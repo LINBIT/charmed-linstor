@@ -4,7 +4,7 @@ metadata:
   name: example-storageclass
 provisioner: linstor.csi.linbit.com
 allowVolumeExpansion: true
-volumeBindingMode: Immediate
+volumeBindingMode: WaitForFirstConsumer
 parameters:
   autoPlace: "2"
   storagePool: thinpool

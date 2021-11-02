@@ -51,22 +51,22 @@ class LinstorControllerCharm(charm.CharmBase):
             event.defer()
             return
 
-        if not self._stored.db_info:
-            self.unit.status = model.BlockedStatus("waiting for database relation")
-            event.defer()
-            return
+        if self._stored.db_info:
+            # TODO: linstor client conf + HTTP endpoint
+            db_info = self._stored.db_info
 
-        # TODO: linstor client conf + HTTP endpoint
-        db_info = self._stored.db_info
-
-        linstor_conf = toml.dumps({
-            "db": {
-                "connection_url":
-                    f"jdbc:postgresql://{db_info['host']}:{db_info['port']}/{db_info['database']}",
-                "user": db_info['user'],
-                "password": db_info['password'],
-            },
-        })
+            linstor_conf = toml.dumps({
+                "db": {
+                    "connection_url":
+                        f"jdbc:postgresql://{db_info['host']}:{db_info['port']}/{db_info['database']}",
+                    "user": db_info['user'],
+                    "password": db_info['password'],
+                },
+            })
+        else:
+            linstor_conf = toml.dumps({
+                "db": {"connection_url": "k8s"},
+            })
 
         linstor_client_conf = f"""[global]
 controllers = {self._linstor_api_url()}
@@ -158,6 +158,39 @@ controllers = {self._linstor_api_url()}
                                     },
                                 ],
                             },
+                            {
+                                "name": "linstor-k8s-backend-writer",
+                                "global": True,
+                                "rules": [
+                                    {
+                                        "apiGroups": ["apiextensions.k8s.io"],
+                                        "resources": ["customresourcedefinitions"],
+                                        "verbs": [
+                                            "get",
+                                            "list",
+                                            "create",
+                                            "delete",
+                                            "update",
+                                            "patch",
+                                            "watch",
+                                        ],
+                                    },
+                                    {
+                                        "apiGroups": ["internal.linstor.linbit.com"],
+                                        # All these resources are dedicated just to the controller, so allow any
+                                        "resources": ["*"],
+                                        "verbs": [
+                                            "get",
+                                            "list",
+                                            "create",
+                                            "delete",
+                                            "update",
+                                            "patch",
+                                            "watch",
+                                        ],
+                                    },
+                                ]
+                            }
                         ],
                     },
                 },

@@ -11,14 +11,7 @@ Follow these steps to add just a LINSTOR Controller to your cluster:
 $ juju deploy linstor-controller.charm
 ```
 
-A LINSTOR Controller requires a database to store information about the cluster and any volumes provision in it. This
-charm currently supports using the [`postgresql-k8s`] charm to provide that database.
-```
-$ juju add-relation linstor-controller:database postgresql-k8s:db
-```
-
 [LINSTOR]: https://linbit.com/linstor/
-[`postgresql-k8s`]: https://charmhub.io/postgresql-k8s
 
 ## Configuration
 N/A

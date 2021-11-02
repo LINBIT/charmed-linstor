@@ -30,7 +30,7 @@ resources:
   linstor-csi-image:
     type: oci-image
     description: LINSTOR CSI Image
-    upstream-source: drbd.io/linstor-csi:v0.13.1
+    upstream-source: drbd.io/linstor-csi:v0.16.0
   csi-node-driver-registrar-image:
     type: oci-image
     description: CSI Node driver registrar Image

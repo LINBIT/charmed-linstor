@@ -22,14 +22,16 @@ Now, assuming you have `juju` already configured for your cluster, run:
 
 ```
 $ juju add-model linstor
-$ juju deploy postgresql-k8s
+$ # Optional: if not configured, uses experimental k8s backend:
+$ # juju deploy postgresql-k8s
 $ juju deploy ./linstor-controller.charm --resource linstor-controller-image=examples/linstor-controller.json
 $ juju deploy ./linstor-satellite.charm --resource linstor-satellite-image=examples/linstor-satellite.json --resource drbd-injector-image=examples/drbd-injector.json --config compile-module=true
 $ juju deploy ./linstor-csi-controller.charm --resource linstor-csi-image=examples/linstor-csi-controller.json --resource csi-snapshotter-image=k8s.gcr.io/sig-storage/csi-snapshotter:v3.0.3 --resource csi-resizer-image=k8s.gcr.io/sig-storage/csi-resizer:v1.1.0 --resource csi-provisioner-image=k8s.gcr.io/sig-storage/csi-provisioner:v2.1.2 --resource csi-liveness-probe-image=k8s.gcr.io/sig-storage/livenessprobe:v2.2.0 --resource csi-attacher-image=k8s.gcr.io/sig-storage/csi-attacher:v3.1.0
 $ juju deploy ./linstor-csi-node.charm --resource linstor-csi-image=examples/linstor-csi-node.json --resource csi-node-driver-registrar-image=k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.3.0 --config publish-path=/var/snap/microk8s/common/var/lib/kubelet/
 $ juju trust linstor-csi-node --scope=cluster
 $ juju deploy ./linstor-ha-controller.charm --resource linstor-ha-controller-image=examples/linstor-ha-controller.json
-$ juju add-relation linstor-controller:database postgresql-k8s:db
+$ # Optional: if not configured, uses experimental k8s backend:
+$ # juju add-relation linstor-controller:database postgresql-k8s:db
 $ juju add-relation linstor-controller:linstor-api linstor-csi-controller:linstor
 $ juju add-relation linstor-controller:linstor-api linstor-csi-node:linstor
 $ juju add-relation linstor-satellite:satellite linstor-csi-node:satellite
@@ -147,10 +149,8 @@ Then you can deploy them. `juju` expects the images to be referenced as resource
 you can reference images from private registries.
 
 ```
-$ # Linstor requires a database. Right now only the postgres-k8s charm is supported
-$ juju deploy postgresql-k8s
-Located charm "postgresql-k8s" in charm-hub, revision 3
-Deploying "postgresql-k8s" from charm-hub charm "postgresql-k8s", revision 3 in channel stable
+$ # Linstor optionally depends on a database. Right now only the postgres-k8s charm is supported
+$ # juju deploy postgresql-k8s
 $ juju deploy ./linstor-controller.charm --resource linstor-controller-image=examples/linstor-controller.json
 Located local charm "linstor-controller", revision 0
 Deploying "linstor-controller" from local charm "linstor-controller", revision 0
@@ -160,10 +160,10 @@ $ juju deploy ./linstor-satellite.charm --resource linstor-satellite-image=examp
 Located local charm "linstor-satellite", revision 0
 Deploying "linstor-satellite" from local charm "linstor-satellite", revision 0
 $ # We can specify public image (like the ones for CSI) directly
-$ juju deploy ./linstor-csi-controller.charm --resource linstor-csi-image=examples/linstor-csi-controller.json --resource csi-snapshotter-image=k8s.gcr.io/sig-storage/csi-snapshotter:v3.0.3 --resource csi-resizer-image=k8s.gcr.io/sig-storage/csi-resizer:v1.1.0 --resource csi-provisioner-image=k8s.gcr.io/sig-storage/csi-provisioner:v2.1.2 --resource csi-liveness-probe-image=k8s.gcr.io/sig-storage/livenessprobe:v2.2.0 --resource csi-attacher-image=k8s.gcr.io/sig-storage/csi-attacher:v3.1.0
+$ juju deploy ./linstor-csi-controller.charm --resource linstor-csi-image=examples/linstor-csi-controller.json --resource csi-snapshotter-image=k8s.gcr.io/sig-storage/csi-snapshotter:v4.2.1 --resource csi-resizer-image=k8s.gcr.io/sig-storage/csi-resizer:v1.3.0 --resource csi-provisioner-image=k8s.gcr.io/sig-storage/csi-provisioner:v2.2.2 --resource csi-liveness-probe-image=k8s.gcr.io/sig-storage/livenessprobe:v2.4.0 --resource csi-attacher-image=k8s.gcr.io/sig-storage/csi-attacher:v3.3.0
 Located local charm "linstor-csi-controller", revision 0
 Deploying "linstor-csi-controller" from local charm "linstor-csi-controller", revision 0
-$ juju deploy ./linstor-csi-node.charm --resource linstor-csi-image=examples/linstor-csi-node.json --resource csi-node-driver-registrar-image=k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.1.0 --resource csi-liveness-probe-image=k8s.gcr.io/sig-storage/livenessprobe:v2.2.0
+$ juju deploy ./linstor-csi-node.charm --resource linstor-csi-image=examples/linstor-csi-node.json --resource csi-node-driver-registrar-image=k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.3.0 --config publish-path=/var/snap/microk8s/common/var/lib/kubelet
 Located local charm "linstor-csi-node", revision 0
 Deploying "linstor-csi-node" from local charm "linstor-csi-node", revision 0
 $ juju deploy ./linstor-ha-controller.charm --resource linstor-ha-controller-image=examples/linstor-ha-controller.json
@@ -227,6 +227,8 @@ $ kubectl exec deployment/linstor-controller -- linstor n l
 | ubuntu-focal-k8s-10 | SATELLITE | 192.168.122.10:3366 (PLAIN) | Online |
 | ubuntu-focal-k8s-11 | SATELLITE | 192.168.122.11:3366 (PLAIN) | Online |
 +------------------------------------------------------------------------+
+$ # To automatically deploy the CSI driver on all nodes with satellites, use
+$ juju add-relation linstor-satellite:satellite linstor-csi-node:satellite
 ```
 
 And that's it for now. You can create storage pools using the usual way by running the linstor command in the controller
