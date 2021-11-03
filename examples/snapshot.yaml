@@ -1,0 +1,8 @@
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
+metadata:
+  name: data-sts-snapshot-0
+spec:
+  volumeSnapshotClassName: linstor-snapshots
+  source:
+    persistentVolumeClaimName: data-sts-with-pvc-0

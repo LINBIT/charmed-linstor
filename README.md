@@ -22,21 +22,24 @@ Now, assuming you have `juju` already configured for your cluster, run:
 
 ```
 $ juju add-model linstor
-$ # Optional: if not configured, uses experimental k8s backend:
-$ # juju deploy postgresql-k8s
 $ juju deploy ./linstor-controller.charm --resource linstor-controller-image=examples/linstor-controller.json
 $ juju deploy ./linstor-satellite.charm --resource linstor-satellite-image=examples/linstor-satellite.json --resource drbd-injector-image=examples/drbd-injector.json --config compile-module=true
 $ juju deploy ./linstor-csi-controller.charm --resource linstor-csi-image=examples/linstor-csi-controller.json --resource csi-snapshotter-image=k8s.gcr.io/sig-storage/csi-snapshotter:v3.0.3 --resource csi-resizer-image=k8s.gcr.io/sig-storage/csi-resizer:v1.1.0 --resource csi-provisioner-image=k8s.gcr.io/sig-storage/csi-provisioner:v2.1.2 --resource csi-liveness-probe-image=k8s.gcr.io/sig-storage/livenessprobe:v2.2.0 --resource csi-attacher-image=k8s.gcr.io/sig-storage/csi-attacher:v3.1.0
 $ juju deploy ./linstor-csi-node.charm --resource linstor-csi-image=examples/linstor-csi-node.json --resource csi-node-driver-registrar-image=k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.3.0 --config publish-path=/var/snap/microk8s/common/var/lib/kubelet/
-$ juju trust linstor-csi-node --scope=cluster
 $ juju deploy ./linstor-ha-controller.charm --resource linstor-ha-controller-image=examples/linstor-ha-controller.json
-$ # Optional: if not configured, uses experimental k8s backend:
+$ # linstor-csi-node needs to modify it's own deployment and add a CSI Driver resource, give it access:
+$ juju trust linstor-csi-node --scope=cluster
+$ # Optional: install external database. LINSTOR 1.16.0-rc.2 can use the K8s API instead.
+$ # juju deploy postgresql-k8s
 $ # juju add-relation linstor-controller:database postgresql-k8s:db
 $ juju add-relation linstor-controller:linstor-api linstor-csi-controller:linstor
 $ juju add-relation linstor-controller:linstor-api linstor-csi-node:linstor
 $ juju add-relation linstor-satellite:satellite linstor-csi-node:satellite
 $ juju add-relation linstor-controller:linstor-api linstor-ha-controller:linstor
 ```
+
+NOTE: the default `examples/` use a username/password combo that **DOES NOT WORK** for drbd.io. You need to replace it
+with your own credentials.
 
 For more information, take a look at the READMEs in each directory.
 
