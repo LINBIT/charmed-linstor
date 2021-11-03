@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: sts-with-pvc
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sts-with-pvc
+  replicas: 1
+  serviceName: sts-with-pvc
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sts-with-pvc
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: DoesNotExist
+      containers:
+        - image: busybox
+          name: demo
+          command: [ "init", "tail", "-f", "/dev/null" ]
+          volumeMounts:
+            - name: data
+              mountPath: /mnt/data
+      terminationGracePeriodSeconds: 5
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        storageClassName: example-storageclass
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 2Gi

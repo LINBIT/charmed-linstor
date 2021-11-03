@@ -5,8 +5,8 @@ stages:
   - deploy
 
 variables:
-  VIRTER_VERSION: v0.13.0
-  VMSHED_VERSION: v0.12.0
+  VIRTER_VERSION: v0.14.3
+  VMSHED_VERSION: v0.14.1
   BUILD_HELPERS_VERSION: dfbf85c26dd39ad1a88807b01fda1dc1d536abbb
 
 prepare-bins:
@@ -52,6 +52,7 @@ provision:
   script:
     - export PATH=$PWD/bin:$PATH
     - BUILD_ID=$(git rev-list -1 HEAD -- virter/base-image.toml virter/base-image-play.yml virter/config virter/inventory)
+    - ln -snf "$DOCKER_AUTH_CONFIG_FILE" $HOME/.docker/config.json
     - virter image build ${LINBIT_DOCKER_REGISTRY}/vm/ubuntu-focal:latest ${LINBIT_DOCKER_REGISTRY}/charmed-linstor/base-vm:latest --bootcap 10G --provision virter/base-image.toml --push --build-id $BUILD_ID
 
 build-charms:

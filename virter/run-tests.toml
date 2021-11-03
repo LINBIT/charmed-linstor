@@ -34,14 +34,10 @@ command = [
     juju bootstrap e2e --no-gui --config update-status-hook-interval=1m
 
     juju add-model linstor --config update-status-hook-interval=1m
-    juju deploy postgresql-k8s
-    trap 'juju status ; kubectl describe pvc ; kubectl describe pod' EXIT
 
-    echo Waiting for Postgres to get ready
-    timeout 300 bash -c -- "while juju status --format=json | jq -r '.applications[][\\"application-status\\"].current' | grep -cv active >/dev/null ; do echo Not all charms active ; sleep 10; done"
+    trap 'juju status ; kubectl describe pvc -n linstor ; kubectl describe pod -n linstor' EXIT
 
     juju deploy /virter/workspace/linstor-controller.charm --resource linstor-controller-image=/virter/workspace/virter/image-configs/linstor-controller.json
-    juju add-relation linstor-controller:database postgresql-k8s:db
     echo Waiting for LINSTOR Controller to get ready
     timeout 300 bash -c -- "while juju status --format=json | jq -r '.applications[][\\"application-status\\"].current' | grep -cv active >/dev/null ; do echo Not all charms active ; sleep 10; done"
 
@@ -51,16 +47,19 @@ command = [
     timeout 300 bash -c -- "while juju status --format=json | jq -r '.applications[][\\"application-status\\"].current' | grep -cv active >/dev/null ; do echo Not all charms active ; sleep 10; done"
 
     juju deploy /virter/workspace/linstor-csi-controller.charm --resource linstor-csi-image=/virter/workspace/virter/image-configs/linstor-csi.json --resource csi-snapshotter-image=k8s.gcr.io/sig-storage/csi-snapshotter:v3.0.3 --resource csi-resizer-image=k8s.gcr.io/sig-storage/csi-resizer:v1.1.0 --resource csi-provisioner-image=k8s.gcr.io/sig-storage/csi-provisioner:v2.1.2 --resource csi-liveness-probe-image=k8s.gcr.io/sig-storage/livenessprobe:v2.2.0 --resource csi-attacher-image=k8s.gcr.io/sig-storage/csi-attacher:v3.1.0
-    juju deploy /virter/workspace/linstor-csi-node.charm --resource linstor-csi-image=/virter/workspace/virter/image-configs/linstor-csi.json --resource csi-node-driver-registrar-image=k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.1.0 --resource csi-liveness-probe-image=k8s.gcr.io/sig-storage/livenessprobe:v2.2.0
+    juju deploy /virter/workspace/linstor-csi-node.charm --resource linstor-csi-image=/virter/workspace/virter/image-configs/linstor-csi.json --resource csi-node-driver-registrar-image=k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.1.0
     juju deploy /virter/workspace/linstor-ha-controller.charm --resource linstor-ha-controller-image=/virter/workspace/virter/image-configs/linstor-ha-controller.json
+    juju trust linstor-csi-node --scope=cluster
 
     juju add-relation linstor-controller:linstor-api linstor-csi-controller:linstor
     juju add-relation linstor-controller:linstor-api linstor-csi-node:linstor
     juju add-relation linstor-controller:linstor-api linstor-ha-controller:linstor
+    juju add-relation linstor-satellite:satellite linstor-csi-node:satellite
 
     echo Waiting for LINSTOR CSI to get ready
     timeout 300 bash -c -- "while juju status --format=json | jq -r '.applications[][\\"application-status\\"].current' | grep -cv active >/dev/null ; do echo Not all charms active ; sleep 10; done"
 
+    trap 'juju status ; kubectl describe pvc ; kubectl describe pod ' EXIT
     echo Create a pod using LINSTOR for a persistent volume to check that everything deployed correctly
     kubectl apply -f /virter/workspace/examples/storageclass.yaml
     kubectl apply -f /virter/workspace/examples/pvc.yaml
