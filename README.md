@@ -47,7 +47,7 @@ For more information, take a look at the READMEs in each directory.
 
 # Development
 
-## MicroK8s Quickstart (using snaps :scream:)
+## MicroK8s Quickstart
 
 Follow the instructions [here](https://juju.is/docs/sdk/dev-setup).
 
