@@ -1,0 +1,35 @@
+# Copyright 2021 LINBIT HA-Solutions GmbH
+# See LICENSE file for licensing details.
+name: linstor
+bundle: kubernetes
+
+applications:
+  linstor-controller:
+    charm: ch:linstor-controller
+    channel: beta
+    scale: 1
+  linstor-csi-controller:
+    charm: ch:linstor-csi-controller
+    channel: beta
+    scale: 1
+  linstor-csi-node:
+    charm: ch:linstor-csi-node
+    channel: beta
+    scale: 1
+  linstor-ha-controller:
+    charm: ch:linstor-ha-controller
+    channel: beta
+    scale: 1
+  linstor-satellite:
+    charm: ch:linstor-satellite
+    channel: beta
+    scale: 1
+relations:
+- - linstor-controller:linstor-api
+  - linstor-ha-controller:linstor
+- - linstor-controller:linstor-api
+  - linstor-csi-controller:linstor
+- - linstor-controller:linstor-api
+  - linstor-satellite:linstor
+- - linstor-controller:linstor-api
+  - linstor-csi-node:linstor

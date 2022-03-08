@@ -1,23 +1,18 @@
-# Copyright 2021 LINBIT HA-Solutions GmbH
+# Copyright 2022 LINBIT HA-Solutions GmbH
 # See LICENSE file for licensing details.
 name: linstor-controller
+summary: Deploys a LINSTOR® Controller on Kubernetes clusters.
 description: |
-  This Charm deploys a LINSTOR Controller on Kubernetes clusters.
-summary: |
-  Kubernetes Charm for LINSTOR Controllers
-tags:
-  - storage
-  - kubernetes
+  Kubernetes Charm for LINSTOR® Controllers.
+  
+  A LINSTOR controller manages the configuration of the LINSTOR cluster and all of its managed storage resources. This charm deploys a LINSTOR Controller in a pod and configures the Kubernetes backend. Other charms can create a relation with this charm to connect to the LINSTOR API.
+  
+  LINSTOR developed by LINBIT®, is a software that manages replicated volumes across a group of machines. With native integration to Kubernetes, LINSTOR makes building, running, and controlling block storage simple. LINSTOR® is open-source software designed to manage block storage devices for large Linux server clusters. It’s used to provide persistent Linux block storage for cloudnative and hypervisor environments.
 maintainers:
-  - "LINBIT HA-Solutions"
+  - "Moritz Wanzenböck <moritz.wanzenboeck@linbit.com>"
 
 series:
   - kubernetes
-
-requires:
-  database:
-    interface: pgsql
-    limit: 1
 
 provides:
   linstor-api:
@@ -29,8 +24,25 @@ deployment:
   service: omit
 
 resources:
-  linstor-controller-image:
-    type: oci-image
-    description: LINSTOR Controller Image
-    auto-fetch: true
-    upstream-source: drbd.io/linstor-controller:v1.13.0
+  image-override:
+    type: file
+    filename: image-override.json
+    description: |
+      Overrides for default images. See example:
+
+      {
+        "linstor-csi-image": {"imagePath": "my-registry.example.com/linstor-csi:latest"}
+      }
+
+      Images to override:
+      * linstor-controller-image: LINSTOR Controller Image
+  pull-secret:
+    type: file
+    filename: linbit.secret
+    description: |
+      File containing login data for drbd.io. Expected content:
+      
+      {
+        "username": "<your username for drbd.io>",
+        "password": "<your password for drbd.io>"
+      }

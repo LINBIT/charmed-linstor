@@ -11,19 +11,34 @@ develop a new k8s charm using the Operator Framework:
 
     https://discourse.charmhub.io/t/4208
 """
+import json
 import logging
 
-from ops import charm, framework, main, model, pebble
-from kubernetes import kubernetes
+from oci_image import OCIImageResource, OCIImageResourceError
+from ops import charm, framework, main, model
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.0-alpha0"
+__version__ = "1.0.0-beta.1"
 
-
-def _k8s_client():
-    kubernetes.config.load_incluster_config()
-    return kubernetes.client.ApiClient()
+_DEFAULTS = {
+    "linstor-csi-image": {
+        "piraeus": "quay.io/piraeusdatastore/piraeus-csi:v0.18.0",
+        "linbit": "drbd.io/linstor-csi:v0.18.0",
+    },
+    "kubectl-image": {
+        "piraeus": "docker.io/bitnami/kubectl:latest",
+        "linbit": "docker.io/bitnami/kubectl:latest",
+    },
+    "csi-node-driver-registrar-image": {
+        "piraeus": "k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.5.0",
+        "linbit": "k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.5.0",
+    },
+    "csi-liveness-probe-image": {
+        "piraeus": "k8s.gcr.io/sig-storage/livenessprobe:v2.6.0",
+        "linbit": "k8s.gcr.io/sig-storage/livenessprobe:v2.6.0",
+    },
+}
 
 
 class LinstorCSINodeCharm(charm.CharmBase):
@@ -32,204 +47,211 @@ class LinstorCSINodeCharm(charm.CharmBase):
     def __init__(self, *args):
         super().__init__(*args)
 
-        self._stored.set_default(linstor_url=None, linstor_satellites=set(), satellite_app_name=None)
+        self._stored.set_default(linstor_url=None, satellite_app_name=None)
 
-        self.framework.observe(self.on.linstor_relation_changed, self._on_linstor_relation_changed)
-        self.framework.observe(self.on.linstor_relation_broken, self._on_linstor_relation_broken)
-        self.framework.observe(self.on.satellite_relation_joined, self._on_satellite_relation_joined)
-        self.framework.observe(self.on.satellite_relation_departed, self._on_satellite_relation_departed)
-        self.framework.observe(self.on.satellite_relation_broken, self._on_satellite_relation_broken)
+        self.framework.observe(
+            self.on.linstor_relation_changed, self._on_linstor_relation_changed
+        )
+        self.framework.observe(
+            self.on.linstor_relation_broken, self._on_linstor_relation_broken
+        )
+        self.framework.observe(
+            self.on.satellite_relation_joined, self._on_satellite_relation_joined
+        )
+        self.framework.observe(
+            self.on.satellite_relation_broken, self._on_satellite_relation_broken
+        )
 
-        self.framework.observe(self.on.install, self._install)
-        self.framework.observe(self.on.remove, self._remove)
         self.framework.observe(self.on.config_changed, self._config_changed)
 
-    def _install(self, event: charm.InstallEvent):
-        """Create necessary resources on install"""
-        self.unit.status = model.MaintenanceStatus("applying k8s resources")
-        # Create the Kubernetes resources needed for the CSI Drivers
-        raw_client = _k8s_client()
-        storagev1 = kubernetes.client.StorageV1Api(raw_client)
-
-        try:
-            storagev1.create_csi_driver(self.csi_driver)
-        except kubernetes.client.exceptions.ApiException as e:
-            if e.status == 409:
-                logger.info("csi driver already exists")
-                return
-            return self.raise_or_report_trust_issue(event, e)
-
-    def _remove(self, event: charm.RemoveEvent):
-        """Clean up created resources on remove"""
-        raw_client = _k8s_client()
-        storagev1 = kubernetes.client.StorageV1Api(raw_client)
-
-        try:
-            storagev1.delete_csi_driver(self.csi_driver.metadata.name)
-        except kubernetes.client.exceptions.ApiException as e:
-            # Ignore errors if:
-            # * the resource doesn't exist in the first place
-            # * We are not allowed to delete. That means we probably never created it in the first place
-            if e.status not in [403, 404]:
-                raise
-
     def _config_changed(self, event: charm.HookEvent):
-        apps_api = kubernetes.client.AppsV1Api(_k8s_client())
         try:
-            s = apps_api.read_namespaced_stateful_set(name=self.app.name, namespace=self.namespace)
-        except kubernetes.client.exceptions.ApiException as e:
-            return self.raise_or_report_trust_issue(event, e)
-
-        if s.metadata.labels.get("charms.linbit.com/patch-applied") != "1":
-            self._patch_sts(event, apps_api, s)
-
-        if self._stored.linstor_satellites and len(self._stored.linstor_satellites) != s.spec.replicas:
-            self._scale_sts(event, apps_api, s)
+            linstor_csi_image = self.get_image("linstor-csi-image")
+            kubectl_image = self.get_image("kubectl-image")
+            csi_node_driver_registrar_image = self.get_image(
+                "csi-node-driver-registrar-image"
+            )
+            csi_liveness_probe_image = self.get_image("csi-liveness-probe-image")
+        except OCIImageResourceError as e:
+            self.unit.status = e.status
+            event.defer()
+            return
 
         if not self._stored.linstor_url:
             self.unit.status = model.BlockedStatus("waiting for linstor relation")
             event.defer()
             return
 
-        try:
-            plugin_layer = {
-                "services": {
-                    "linstor-csi-plugin": {
-                        "override": "replace",
-                        "command": (
-                            # Need sh to interpret environment variables
-                            "/bin/sh -c 'exec /linstor-csi "
-                            "--csi-endpoint=unix:///run/csi/csi.sock "
-                            f"--linstor-endpoint={self._stored.linstor_url} "
-                            "--node=${KUBE_NODE_NAME}'"
-                        ),
-                    },
+        if self.unit.is_leader():
+            self.app.status = model.MaintenanceStatus("Setting pod spec")
+
+            plugin_vol = {
+                "name": "plugin-dir",
+                "mountPath": "/run/csi",
+                "hostPath": {
+                    "path": "/var/lib/kubelet/plugins/linstor.csi.linbit.com",
+                    "type": "DirectoryOrCreate",
                 },
             }
 
-            plugin = self.unit.get_container("linstor-csi-plugin")
-            plugin.add_layer("linstor-csi-plugin", plugin_layer, combine=True)
-            if not plugin.get_service("linstor-csi-plugin").is_running():
-                plugin.start("linstor-csi-plugin")
-                logger.info("linstor-csi-plugin service started")
-
-            registrar_layer = {
-                "services": {
-                    "csi-node-driver-registrar": {
-                        "override": "replace",
-                        "command": (
-                            "/csi-node-driver-registrar "
-                            "--csi-address=/run/csi/csi.sock "
-                            f"--kubelet-registration-path={self.config['publish-path']}"
-                            "/plugins/linstor.csi.linbit.com/csi.sock"
-                        ),
-                    }
-                }
+            publish_vol = {
+                "name": "publish-dir",
+                "mountPath": self.config["publish-path"],
+                "hostPath": {"path": self.config["publish-path"], "type": "Directory"},
             }
-            registrar = self.unit.get_container("csi-node-driver-registrar")
-            registrar.add_layer("csi-node-driver-registrar", registrar_layer, combine=True)
-            if not registrar.get_service("csi-node-driver-registrar").is_running():
-                registrar.start("csi-node-driver-registrar")
-                logger.info("csi-node-driver-registrar service started")
 
-        except pebble.Error as e:
-            logger.warning(f"pebble error: {e}")
-            self.unit.status = model.MaintenanceStatus("waiting for pebble to become ready")
-            event.defer()
-            return
+            registration_vol = {
+                "name": "registration-dir",
+                "mountPath": "/registration",
+                "hostPath": {
+                    "path": "/var/lib/kubelet/plugins_registry",
+                    "type": "Directory",
+                },
+            }
 
-        self.unit.status = model.ActiveStatus()
+            dev_dir = {
+                "name": "dev-dir",
+                "mountPath": "/dev",
+                "hostPath": {"path": "/dev", "type": "Directory"},
+            }
 
-    def _patch_sts(
-            self, event: charm.HookEvent, apps_api: kubernetes.client.AppsV1Api, s: kubernetes.client.V1StatefulSet
-    ):
-        if not self.unit.is_leader():
-            self.unit.status = model.MaintenanceStatus("waiting for leader to patch stateful set")
-            event.defer()
-            return
+            k8s_resource_dir = {
+                "name": "k8s-resource-dir",
+                "mountPath": "/k8s",
+                "files": [
+                    {
+                        "path": "init.sh",
+                        "content": f"""
+                        set -ex
+                        kubectl patch daemonsets.apps {self.app.name} --patch-file /k8s/ds.patch --field-manager charms.linbit.com/v1 
+                        kubectl apply --filename /k8s/csi-driver.json --server-side=true --field-manager charms.linbit.com/v1 
+                        """,
+                        "mode": 0o755,
+                    },
+                    {
+                        "path": "ds.patch",
+                        "content": json.dumps(self.daemonset_patch),
+                        "mode": 0o644,
+                    },
+                    {
+                        "path": "csi-driver.json",
+                        "content": json.dumps(self.csi_driver),
+                        "mode": 0o644,
+                    },
+                ],
+            }
 
-        self.unit.status = model.MaintenanceStatus("patching stateful set")
-        s.metadata.labels["charms.linbit.com/patch-applied"] = "1"
+            csi_env = {
+                "ADDRESS": "/run/csi/csi.sock",
+                "LS_CONTROLLERS": self._stored.linstor_url,
+                "NODE_NAME": {"field": {"path": "spec.nodeName", "api-version": "v1"}},
+                "PUBLISH_PATH": self.config["publish-path"],
+            }
 
-        # Apply the default tolerations of a DaemonSet:
-        # https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/#taints-and-tolerations
-        s.spec.template.spec.tolerations = [
-            kubernetes.client.V1Toleration(key="node.kubernetes.io/not-ready", effect="NoExecute"),
-            kubernetes.client.V1Toleration(key="node.kubernetes.io/unreachable", effect="NoExecute"),
-            kubernetes.client.V1Toleration(key="node.kubernetes.io/disk-pressure", effect="NoSchedule"),
-            kubernetes.client.V1Toleration(key="node.kubernetes.io/memory-pressure", effect="NoSchedule"),
-            kubernetes.client.V1Toleration(key="node.kubernetes.io/unschedulable", effect="NoSchedule"),
-        ]
-
-        s.spec.template.spec.volumes.extend([
-            kubernetes.client.V1Volume(
-                name="publish-dir",
-                host_path=kubernetes.client.V1HostPathVolumeSource(
-                    path=self.config["publish-path"], type="Directory"
-                ),
-            ),
-            kubernetes.client.V1Volume(
-                name="device-dir",
-                host_path=kubernetes.client.V1HostPathVolumeSource(path="/dev", type="Directory")
-            ),
-            kubernetes.client.V1Volume(
-                name="plugin-dir",
-                host_path=kubernetes.client.V1HostPathVolumeSource(
-                    path="/var/lib/kubelet/plugins/linstor.csi.linbit.com", type="DirectoryOrCreate"
-                ),
-            ),
-            kubernetes.client.V1Volume(
-                name="registration-dir",
-                host_path=kubernetes.client.V1HostPathVolumeSource(
-                    path="/var/lib/kubelet/plugins_registry/", type="DirectoryOrCreate"
-                ),
-            ),
-        ])
-
-        privileged_context = kubernetes.client.V1SecurityContext(
-            privileged=True
-        )
-        sys_admin_context = kubernetes.client.V1SecurityContext(
-            privileged=True,
-            capabilities=kubernetes.client.V1Capabilities(add=["SYS_ADMIN"])
-        )
-        node_name_var = kubernetes.client.V1EnvVar(
-            name="KUBE_NODE_NAME",
-            value_from=kubernetes.client.V1EnvVarSource(
-                field_ref=kubernetes.client.V1ObjectFieldSelector(field_path="spec.nodeName")
+            self.model.pod.set_spec(
+                spec={
+                    "version": 3,
+                    "containers": [
+                        {
+                            "name": "linstor-csi-plugin",
+                            "imageDetails": linstor_csi_image,
+                            "args": [
+                                "--csi-endpoint=unix://$(ADDRESS)",
+                                "--node=$(NODE_NAME)",
+                                "--linstor-endpoint=$(LS_CONTROLLERS)",
+                                "--log-level=info",
+                            ],
+                            "volumeConfig": [plugin_vol, publish_vol, dev_dir],
+                            "envConfig": csi_env,
+                            "kubernetes": {
+                                "securityContext": {"privileged": True},
+                                "livenessProbe": {
+                                    "failureThreshold": 3,
+                                    "httpGet": {
+                                        "path": "/healthz",
+                                        "port": 9808,
+                                        "scheme": "HTTP",
+                                    },
+                                    "periodSeconds": 10,
+                                    "successThreshold": 1,
+                                    "timeoutSeconds": 1,
+                                },
+                            },
+                        },
+                        {
+                            "name": "csi-livenessprobe",
+                            "imageDetails": csi_liveness_probe_image,
+                            "args": ["--csi-address=$(ADDRESS)"],
+                            "volumeConfig": [plugin_vol],
+                            "envConfig": csi_env,
+                        },
+                        {
+                            "name": "csi-node-driver-registrar",
+                            "imageDetails": csi_node_driver_registrar_image,
+                            "args": [
+                                "--csi-address=$(ADDRESS)",
+                                "--kubelet-registration-path=/var/lib/kubelet/plugins/linstor.csi.linbit.com/csi.sock",
+                            ],
+                            "volumeConfig": [plugin_vol, registration_vol],
+                            "envConfig": csi_env,
+                        },
+                        {
+                            "name": "patcher",
+                            "imageDetails": kubectl_image,
+                            "init": True,
+                            "command": ["sh", "/k8s/init.sh"],
+                            "volumeConfig": [k8s_resource_dir],
+                        },
+                        {
+                            "name": "linstor-wait-satellite",
+                            "init": True,
+                            "imageDetails": linstor_csi_image,
+                            "command": [
+                                "/linstor-wait-until",
+                                "satellite-online",
+                                "$(NODE_NAME)",
+                            ],
+                            "envConfig": csi_env,
+                        },
+                    ],
+                    "serviceAccount": {
+                        "roles": [
+                            {
+                                "name": "csi-driver-apply",
+                                "global": True,
+                                "rules": [
+                                    {
+                                        "apiGroups": ["storage.k8s.io"],
+                                        "resources": ["csidrivers"],
+                                        "verbs": [
+                                            "get",
+                                            "list",
+                                            "patch",
+                                            "update",
+                                            "create",
+                                            "delete",
+                                        ],
+                                    },
+                                ],
+                            },
+                            {
+                                "name": "csi-node-daemonset-patcher",
+                                "rules": [
+                                    {
+                                        "apiGroups": ["apps"],
+                                        "resources": ["daemonsets"],
+                                        "resourceNames": [self.app.name],
+                                        "verbs": ["get", "patch"],
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                },
             )
-        )
 
-        for container in s.spec.template.spec.containers:
-            if container.name == "csi-node-driver-registrar":
-                # Need privileged context to mount host volume
-                container.security_context = privileged_context
-                container.volume_mounts.extend([
-                    kubernetes.client.V1VolumeMount(name="plugin-dir", mount_path="/run/csi"),
-                    kubernetes.client.V1VolumeMount(
-                        name="registration-dir",
-                        mount_path="/registration",
-                    ),
-                ])
-                container.env.extend([node_name_var])
-            if container.name == "linstor-csi-plugin":
-                # Need privileged + SYS_ADMIN context to mount volumes
-                container.security_context = sys_admin_context
-                container.volume_mounts.extend([
-                    kubernetes.client.V1VolumeMount(name="plugin-dir", mount_path="/run/csi"),
-                    kubernetes.client.V1VolumeMount(name="device-dir", mount_path="/dev"),
-                    kubernetes.client.V1VolumeMount(
-                        name="publish-dir",
-                        mount_path=self.config["publish-path"],
-                        mount_propagation="Bidirectional",
-                    ),
-                ])
-                container.env.extend([node_name_var])
-
-        try:
-            apps_api.patch_namespaced_stateful_set(name=self.app.name, namespace=self.namespace, body=s)
-        except kubernetes.client.exceptions.ApiException as e:
-            return self.raise_or_report_trust_issue(event, e)
+            self.app.status = model.ActiveStatus()
+        self.unit.status = model.ActiveStatus()
 
     def _on_linstor_relation_changed(self, event: charm.RelationChangedEvent):
         url = event.relation.data[event.app].get("url")
@@ -246,98 +268,83 @@ class LinstorCSINodeCharm(charm.CharmBase):
         logger.debug(f"joined: {event}")
         self._stored.satellite_app_name = event.app.name
 
-        if event.unit.name not in self._stored.linstor_satellites:
-            self._stored.linstor_satellites.add(event.unit.name)
-            self._config_changed(event)
-
-    def _on_satellite_relation_departed(self, event: charm.RelationDepartedEvent):
-        logger.debug(f"departed: {event}")
-        if event.unit.name in self._stored.linstor_satellites:
-            self._stored.linstor_satellites.discard(event.unit.name)
-            self._config_changed(event)
-
     def _on_satellite_relation_broken(self, event: charm.RelationBrokenEvent):
         logger.debug(f"broken: {event}")
-        self._stored.linstor_satellites = set()
+        self._stored.satellite_app_name = None
 
-    def raise_or_report_trust_issue(self, event: charm.HookEvent, e: kubernetes.client.exceptions.ApiException):
-        if e.status == 403:
-            logger.debug(f"not allowed to patch sts: {e}")
-            self.unit.status = model.MaintenanceStatus(
-                f"not allowed to patch STS, please run 'juju trust {self.app.name} --scope=cluster'"
-            )
-            event.defer()
-            return
+    def get_image(self, name) -> dict:
+        override = self.model.resources.fetch(
+            "image-override"
+        ).read_bytes()  # type: bytes
+        override = json.loads(override)  # type: dict
+        if override.get(name):
+            return override.get(name)
 
-        raise e
+        pull_secret = self.model.resources.fetch(
+            "pull-secret"
+        ).read_bytes()  # type: bytes
+        if pull_secret:
+            details = json.loads(pull_secret)
+            image = _DEFAULTS[name]["linbit"]
+
+            if not image.startswith("drbd.io"):
+                # Some registries don't like sending login data even if no login is required.
+                return {"imagePath": image}
+
+            details["imagePath"] = image
+            return details
+        else:
+            return {"imagePath": _DEFAULTS[name]["piraeus"]}
 
     @property
-    def namespace(self) -> str:
-        with open("/var/run/secrets/kubernetes.io/serviceaccount/namespace", "r") as f:
-            return f.read().strip()
+    def csi_driver(self) -> dict:
+        return {
+            "apiVersion": "storage.k8s.io/v1",
+            "kind": "CSIDriver",
+            "metadata": {
+                "name": "linstor.csi.linbit.com",
+                "labels": {
+                    "app.kubernetes.io/component": "cluster-config",
+                    "app.kubernetes.io/instance": self.app.name,
+                },
+            },
+            "spec": {
+                "attachRequired": True,
+                "fsGroupPolicy": "ReadWriteOnceWithFSType",
+                "podInfoOnMount": True,
+                "requiresRepublish": False,
+                "storageCapacity": True,
+                "volumeLifecycleModes": ["Persistent"],
+            },
+        }
 
     @property
-    def csi_driver(self) -> kubernetes.client.V1CSIDriver:
-        return kubernetes.client.V1CSIDriver(
-            metadata=kubernetes.client.V1ObjectMeta(
-                name="linstor.csi.linbit.com",
-                labels={"app.kubernetes.io/component": "cluster-config", "app.kubernetes.io/instance": self.app.name},
-            ),
-            spec=kubernetes.client.V1CSIDriverSpec(
-                attach_required=True,
-                pod_info_on_mount=True,
-                volume_lifecycle_modes=["Persistent"],
-            ),
-        )
-
-    def _scale_sts(self, event, apps_api, s):
-        logger.info(f"scale for satellites {self._stored.satellite_app_name}: {self._stored.linstor_satellites}")
-
-        if not self.unit.is_leader():
-            self.unit.status = model.MaintenanceStatus("waiting for leader to patch stateful set")
-            event.defer()
-            return
-
-        if not s.spec.template.spec.affinity:
-            s.spec.template.spec.affinity = kubernetes.client.V1Affinity(
-                pod_affinity=kubernetes.client.V1PodAffinity(
-                    required_during_scheduling_ignored_during_execution=[],
-                ),
-                pod_anti_affinity=kubernetes.client.V1PodAntiAffinity(
-                    required_during_scheduling_ignored_during_execution=[],
-                ),
-            )
-
-        affinity = s.spec.template.spec.affinity
-
-        if not any(
-                term.label_selector.match_labels.get("app.kubernetes.io/name") == self._stored.satellite_app_name
-                for term in
-                affinity.pod_affinity.required_during_scheduling_ignored_during_execution
-        ):
-            affinity.pod_affinity.required_during_scheduling_ignored_during_execution.extend([
-                kubernetes.client.V1PodAffinityTerm(
-                    topology_key="kubernetes.io/hostname",
-                    label_selector=kubernetes.client.V1LabelSelector(match_labels={
-                        "app.kubernetes.io/name": self._stored.satellite_app_name,
-                    }),
-                )
-            ])
-            affinity.pod_anti_affinity.required_during_scheduling_ignored_during_execution.extend([
-                kubernetes.client.V1PodAffinityTerm(
-                    topology_key="kubernetes.io/hostname",
-                    label_selector=kubernetes.client.V1LabelSelector(match_labels={
-                        "app.kubernetes.io/name": self.app.name,
-                    }),
-                )
-            ])
-
-        s.spec.replicas = len(self._stored.linstor_satellites)
-
-        try:
-            apps_api.patch_namespaced_stateful_set(name=self.app.name, namespace=self.namespace, body=s)
-        except kubernetes.client.exceptions.ApiException as e:
-            return self.raise_or_report_trust_issue(event, e)
+    def daemonset_patch(self) -> dict:
+        return {
+            "metadata": {
+                "labels": {
+                    "charms.linbit.com/patched": "true",
+                }
+            },
+            "spec": {
+                "template": {
+                    "spec": {
+                        "containers": [
+                            {
+                                "name": "linstor-csi-plugin",
+                                "volumeMounts": [
+                                    {
+                                        "name": "publish-dir",
+                                        "mountPropagation": "Bidirectional",
+                                        "mountPath": self.config["publish-path"],
+                                    }
+                                ],
+                            }
+                        ]
+                    }
+                }
+            },
+        }
 
 
 if __name__ == "__main__":

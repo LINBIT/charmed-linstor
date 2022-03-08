@@ -1,12 +1,13 @@
 # Copyright 2021 LINBIT HA-Solutions GmbH
 # See LICENSE file for licensing details.
 name: linstor-satellite
+summary: Deploys LINSTOR® Satellites on Kubernetes clusters.
 description: |
-  TEMPLATE-TODO: fill out the charm's description
-summary: |
-  TEMPLATE-TODO: fill out the charm's summary
-tags:
-  - storage
+  This Charm deploys LINSTOR Satellites on Kubernetes clusters.
+
+  The LINSTOR satellite component manages creation, modification and deletion of storage resources on each node that provides or uses storage resources managed by LINSTOR.
+
+  LINSTOR developed by LINBIT®, is a software that manages replicated volumes across a group of machines. With native integration to Kubernetes, LINSTOR makes building, running, and controlling block storage simple. LINSTOR® is open-source software designed to manage block storage devices for large Linux server clusters. It’s used to provide persistent Linux block storage for cloudnative and hypervisor environments.
 maintainers:
   - "Moritz Wanzenböck <moritz.wanzenboeck@linbit.com>"
 
@@ -28,11 +29,26 @@ deployment:
   service: omit
 
 resources:
-  linstor-satellite-image:
-    type: oci-image
-    description: LINSTOR Satellite Image
-    upstream-source: drbd.io/linstor-satellite:v1.13.0
-  drbd-injector-image:
-    type: oci-image
-    description: DRBD Injector Image
-    upstream-source: drbd.io/drbd9-focal:v9.0.29
+  image-override:
+    type: file
+    filename: image-override.json
+    description: |
+      Overrides for default images. See example:
+      
+      {
+        "linstor-satellite-image": {"imagePath": "my-registry.example.com/linstor-satellite:latest"}
+      }
+      
+      Images to override:
+      * linstor-satellite-image: LINSTOR Satellite Image  
+      * drbd-injector-image: DRBD Injector Image
+  pull-secret:
+    type: file
+    filename: linbit.secret
+    description: |
+      File containing login data for drbd.io. Expected content:
+      
+      {
+        "username": "<your username for drbd.io>",
+        "password": "<your password for drbd.io>"
+      }

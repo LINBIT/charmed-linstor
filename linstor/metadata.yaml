@@ -1,0 +1,17 @@
+# Copyright 2021 LINBIT HA-Solutions GmbH
+# See LICENSE file for licensing details.
+name: linstor
+summary: Deploys LINSTOR® on Kubernetes clusters and configures the CSI Driver..
+description: |
+  This Bundle deploys LINSTOR on Kubernetes clusters and configures the CSI Driver.
+
+  LINSTOR developed by LINBIT®, is a software that manages replicated volumes across a group of machines
+
+  LINSTOR system consists of multiple server and client components. A LINSTOR controller manages the configuration of the
+  LINSTOR cluster and all of its managed storage resources. The LINSTOR satellite component manages creation, modification
+  and deletion of storage resources on each node that provides or uses storage resources managed by LINSTOR.
+
+  The storage system integrates with Kubernetes via a CSI Driver. Storage can be managed via Kubernetes objects such as
+  `StorageClass` and `PersistentVolumeClaim`.
+maintainers:
+  - "Moritz Wanzenböck <moritz.wanzenboeck@linbit.com>"

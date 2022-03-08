@@ -2,20 +2,20 @@
 # See LICENSE file for licensing details.
 name: linstor-csi-node
 description: |
-  TEMPLATE-TODO: fill out the charm's description
-summary: |
-  TEMPLATE-TODO: fill out the charm's summary
-tags:
-  - storage
+  This Charm deploys LINSTOR® CSI Nodes on Kubernetes clusters.
+  
+  The CSI Controller is part of a CSI driver for LINSTOR. It enables using LINSTOR to provision standard kubernetes
+  resources (StorageClasses, PersistentVolumeClaims).
+summary: Deploys LINSTOR® CSI Nodes on Kubernetes clusters.
 maintainers:
   - "Moritz Wanzenböck <moritz.wanzenboeck@linbit.com>"
 
+series:
+  - kubernetes
 
-containers:
-  linstor-csi-plugin:
-    resource: linstor-csi-image
-  csi-node-driver-registrar:
-    resource: csi-node-driver-registrar-image
+deployment:
+  type: daemon
+  service: omit
 
 requires:
   linstor:
@@ -27,11 +27,28 @@ requires:
     limit: 1
 
 resources:
-  linstor-csi-image:
-    type: oci-image
-    description: LINSTOR CSI Image
-    upstream-source: drbd.io/linstor-csi:v0.16.0
-  csi-node-driver-registrar-image:
-    type: oci-image
-    description: CSI Node driver registrar Image
-    upstream-source: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.3.0
+  image-override:
+    type: file
+    filename: image-override.json
+    description: |
+      Overrides for default images. See example:
+      
+      {
+        "linstor-csi-image": {"imagePath": "my-registry.example.com/linstor-csi:latest"}
+      }
+      
+      Images to override:
+      * linstor-csi-image: LINSTOR CSI Image
+      * csi-liveness-probe-image: CSI liveness probe Image
+      * csi-node-driver-registrar-image: CSI Node driver registrar Image
+      * kubectl-image: Helper image to patch and deploy resources via kubectl
+  pull-secret:
+    type: file
+    filename: linbit.secret
+    description: |
+      File containing login data for drbd.io. Expected content:
+      
+      {
+        "username": "<your username for drbd.io>",
+        "password": "<your password for drbd.io>"
+      }

@@ -31,11 +31,13 @@ class TestCharmHelpers(unittest.TestCase):
             },
             {
                 "conf": "provider=lvmthin,provider_name=storage/thinpool,name=thinpool",
-                "expected": [StoragePoolConfig("thinpool", "lvmthin", "storage/thinpool", [])],
+                "expected": [
+                    StoragePoolConfig("thinpool", "lvmthin", "storage/thinpool", [])
+                ],
             },
             {
                 "conf": "provider=lvmthin,provider_name=storage/thinpool,name=thinpool "
-                        "provider=zfs,provider_name=ssds,name=ssds,devices=/dev/sdc,devices=/dev/sdd",
+                "provider=zfs,provider_name=ssds,name=ssds,devices=/dev/sdc,devices=/dev/sdd",
                 "expected": [
                     StoragePoolConfig("thinpool", "lvmthin", "storage/thinpool", []),
                     StoragePoolConfig("ssds", "zfs", "ssds", ["/dev/sdc", "/dev/sdd"]),

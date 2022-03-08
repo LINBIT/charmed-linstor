@@ -1,12 +1,12 @@
 # Copyright 2021 LINBIT HA-Solutions GmbH
 # See LICENSE file for licensing details.
 name: linstor-ha-controller
+summary: Deploys LINSTOR® High-Availability Controller on Kubernetes clusters.
 description: |
-  TEMPLATE-TODO: fill out the charm's description
-summary: |
-  TEMPLATE-TODO: fill out the charm's summary
-tags:
-  - storage
+  This Charm deploys LINSTOR® High-Availability Controller on Kubernetes clusters.
+
+  The LINSTOR High-Availability Controller speeds up failover of stateful workloads in
+  cases of storage outages.
 maintainers:
   - "Moritz Wanzenböck <moritz.wanzenboeck@linbit.com>"
 
@@ -23,7 +23,25 @@ deployment:
   service: omit
 
 resources:
-  linstor-ha-controller-image:
-    type: oci-image
-    description: LINSTOR Controller Image
-    upstream-source: drbd.io/linstor-k8s-ha-controller:v0.1.3
+  image-override:
+    type: file
+    filename: image-override.json
+    description: |
+      Overrides for default images. See example:
+      
+      {
+        "linstor-ha-controller-image": {"imagePath": "my-registry.example.com/linstor-ha-controller:latest"}
+      }
+      
+      Images to override:
+      * linstor-ha-controller-image: LINSTOR HA Controller Image
+  pull-secret:
+    type: file
+    filename: linbit.secret
+    description: |
+      File containing login data for drbd.io. Expected content:
+      
+      {
+        "username": "<your username for drbd.io>",
+        "password": "<your password for drbd.io>"
+      }

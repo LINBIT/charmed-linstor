@@ -1,12 +1,12 @@
 # Copyright 2021 LINBIT HA-Solutions GmbH
 # See LICENSE file for licensing details.
 name: linstor-csi-controller
+summary: Deploys a LINSTOR® CSI Controller on Kubernetes clusters.
 description: |
-  TEMPLATE-TODO: fill out the charm's description
-summary: |
-  TEMPLATE-TODO: fill out the charm's summary
-tags:
-  - storage
+  This Charm deploys a LINSTOR® CSI Controller on Kubernetes clusters.
+
+  The CSI Controller is part of a CSI driver for [LINSTOR]. It enables using LINSTOR to provision standard kubernetes
+  resources (StorageClasses, PersistentVolumeClaims).
 maintainers:
   - "Moritz Wanzenböck <moritz.wanzenboeck@linbit.com>"
 
@@ -23,27 +23,30 @@ deployment:
   service: omit
 
 resources:
-  linstor-csi-image:
-    type: oci-image
-    description: LINSTOR CSI Image
-    upstream-source: drbd.io/linstor-csi:v0.16.0
-  csi-attacher-image:
-    type: oci-image
-    description: CSI Attacher Image
-    upstream-source: k8s.gcr.io/sig-storage/csi-attacher:v3.3.0
-  csi-liveness-probe-image:
-    type: oci-image
-    description: CSI liveness probe Image
-    upstream-source: k8s.gcr.io/sig-storage/livenessprobe:v2.4.0
-  csi-provisioner-image:
-    type: oci-image
-    description: CSI Provisioner Image
-    upstream-source: k8s.gcr.io/sig-storage/csi-provisioner:v2.2.2
-  csi-resizer-image:
-    type: oci-image
-    description: CSI Resizer Image
-    upstream-source: k8s.gcr.io/sig-storage/csi-resizer:v1.3.0
-  csi-snapshotter-image:
-    type: oci-image
-    description: CSI Snapshotter Image
-    upstream-source: k8s.gcr.io/sig-storage/csi-snapshotter:v4.2.1
+  image-override:
+    type: file
+    filename: image-override.json
+    description: |
+      Overrides for default images. See example:
+
+      {
+        "linstor-csi-image": {"imagePath": "my-registry.example.com/linstor-csi:latest"}
+      }
+
+      Images to override:
+      * linstor-csi-image: LINSTOR CSI Image
+      * csi-attacher-image: CSI Attacher Image
+      * csi-liveness-probe-image: CSI liveness probe Image
+      * csi-provisioner-image: CSI Provisioner Image
+      * csi-resizer-image: CSI Resizer Image
+      * csi-snapshotter-image: CSI Snapshotter Image
+  pull-secret:
+    type: file
+    filename: linbit.secret
+    description: |
+      File containing login data for drbd.io. Expected content:
+      
+      {
+        "username": "<your username for drbd.io>",
+        "password": "<your password for drbd.io>"
+      }

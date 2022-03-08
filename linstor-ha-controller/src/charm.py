@@ -11,6 +11,7 @@ develop a new k8s charm using the Operator Framework:
 
     https://discourse.charmhub.io/t/4208
 """
+import json
 import logging
 
 from oci_image import OCIImageResource, OCIImageResourceError
@@ -18,7 +19,14 @@ from ops import charm, framework, main, model
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.0-alpha0"
+__version__ = "1.0.0-beta.1"
+
+_DEFAULTS = {
+    "linstor-ha-controller-image": {
+        "piraeus": "quay.io/piraeusdatastore/piraeus-ha-controller:v0.3.0",
+        "linbit": "drbd.io/linstor-k8s-ha-controller:v0.3.0",
+    }
+}
 
 
 class LinstorHighAvailabilityControllerCharm(charm.CharmBase):
@@ -27,20 +35,21 @@ class LinstorHighAvailabilityControllerCharm(charm.CharmBase):
     def __init__(self, *args):
         super().__init__(*args)
 
-        # TODO support both mysql and postgres
         self._stored.set_default(linstor_url=None)
 
-        self.framework.observe(self.on.linstor_relation_changed, self._on_linstor_relation_changed)
-        self.framework.observe(self.on.linstor_relation_broken, self._on_linstor_relation_broken)
-
-        self.linstor_ha_controller_image = OCIImageResource(self, "linstor-ha-controller-image")
+        self.framework.observe(
+            self.on.linstor_relation_changed, self._on_linstor_relation_changed
+        )
+        self.framework.observe(
+            self.on.linstor_relation_broken, self._on_linstor_relation_broken
+        )
         self.framework.observe(self.on.install, self._set_pod_spec)
         self.framework.observe(self.on.upgrade_charm, self._set_pod_spec)
         self.framework.observe(self.on.config_changed, self._set_pod_spec)
 
     def _set_pod_spec(self, event: charm.HookEvent):
         try:
-            linstor_ha_controller_image = self.linstor_ha_controller_image.fetch()
+            linstor_ha_controller_image = self.get_image("linstor-ha-controller-image")
         except OCIImageResourceError as e:
             self.unit.status = e.status
             event.defer()
@@ -64,6 +73,13 @@ class LinstorHighAvailabilityControllerCharm(charm.CharmBase):
                     "version": 3,
                     "containers": [
                         {
+                            "name": "linstor-wait-api",
+                            "init": True,
+                            "imageDetails": linstor_ha_controller_image,
+                            "command": ["/linstor-wait-until", "api-online"],
+                            "envConfig": env,
+                        },
+                        {
                             "name": "linstor-ha-controller",
                             "imageDetails": linstor_ha_controller_image,
                             "args": [
@@ -78,11 +94,11 @@ class LinstorHighAvailabilityControllerCharm(charm.CharmBase):
                                     "httpGet": {
                                         "path": "/healthz",
                                         "port": 8080,
-                                        "scheme": "HTTP"
+                                        "scheme": "HTTP",
                                     },
                                     "periodSeconds": 10,
                                     "successThreshold": 1,
-                                    "timeoutSeconds": 1
+                                    "timeoutSeconds": 1,
                                 },
                             },
                             "envConfig": env,
@@ -124,8 +140,8 @@ class LinstorHighAvailabilityControllerCharm(charm.CharmBase):
                                         "resources": ["volumeattachments"],
                                         "verbs": ["list", "watch", "delete"],
                                     },
-                                ]
-                            }
+                                ],
+                            },
                         ],
                     },
                 },
@@ -144,6 +160,30 @@ class LinstorHighAvailabilityControllerCharm(charm.CharmBase):
     def _on_linstor_relation_broken(self, event: charm.RelationBrokenEvent):
         self._stored.linstor_url = None
         self._set_pod_spec(event)
+
+    def get_image(self, name) -> dict:
+        override = self.model.resources.fetch(
+            "image-override"
+        ).read_bytes()  # type: bytes
+        override = json.loads(override)  # type: dict
+        if override.get(name):
+            return override.get(name)
+
+        pull_secret = self.model.resources.fetch(
+            "pull-secret"
+        ).read_bytes()  # type: bytes
+        if pull_secret:
+            details = json.loads(pull_secret)
+            image = _DEFAULTS[name]["linbit"]
+
+            if not image.startswith("drbd.io"):
+                # Some registries don't like sending login data even if no login is required.
+                return {"imagePath": image}
+
+            details["imagePath"] = image
+            return details
+        else:
+            return {"imagePath": _DEFAULTS[name]["piraeus"]}
 
 
 if __name__ == "__main__":

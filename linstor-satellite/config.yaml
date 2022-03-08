@@ -1,17 +1,17 @@
 # Copyright 2021 LINBIT HA-Solutions GmbH
 # See LICENSE file for licensing details.
-#
-# Learn more about config at: https://juju.is/docs/sdk/config
 
 options:
   linstor-control-port:
     default: 3366
     description: Port the Linstor Satellite will listen on for control plane commands.
     type: int
-  compile-module:
-    default: false
-    description: Compile the DBRD module (instead of loading from packages)
-    type: boolean
+  injection-mode:
+    type: string
+    default: auto
+    description: > 
+      How to inject the kernel module. Can be "compile", "package" or "auto". The default (auto) compiles
+      unless a LINBIT image is used.
   storage-pools:
     type: string
     default: ''

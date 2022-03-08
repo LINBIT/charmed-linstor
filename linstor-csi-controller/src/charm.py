@@ -11,6 +11,7 @@ develop a new k8s charm using the Operator Framework:
 
     https://discourse.charmhub.io/t/4208
 """
+import json
 import logging
 
 from oci_image import OCIImageResource, OCIImageResourceError
@@ -18,7 +19,34 @@ from ops import charm, framework, main, model
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.0-alpha0"
+__version__ = "1.0.0-beta.1"
+
+_DEFAULTS = {
+    "linstor-csi-image": {
+        "piraeus": "quay.io/piraeusdatastore/piraeus-csi:v0.18.0",
+        "linbit": "drbd.io/linstor-csi:v0.18.0",
+    },
+    "csi-attacher-image": {
+        "piraeus": "k8s.gcr.io/sig-storage/csi-attacher:v3.4.0",
+        "linbit": "k8s.gcr.io/sig-storage/csi-attacher:v3.4.0",
+    },
+    "csi-liveness-probe-image": {
+        "piraeus": "k8s.gcr.io/sig-storage/livenessprobe:v2.6.0",
+        "linbit": "k8s.gcr.io/sig-storage/livenessprobe:v2.6.0",
+    },
+    "csi-provisioner-image": {
+        "piraeus": "k8s.gcr.io/sig-storage/csi-provisioner:v3.1.0",
+        "linbit": "k8s.gcr.io/sig-storage/csi-provisioner:v3.1.0",
+    },
+    "csi-resizer-image": {
+        "piraeus": "k8s.gcr.io/sig-storage/csi-resizer:v1.4.0",
+        "linbit": "k8s.gcr.io/sig-storage/csi-resizer:v1.4.0",
+    },
+    "csi-snapshotter-image": {
+        "piraeus": "k8s.gcr.io/sig-storage/csi-snapshotter:v5.0.1",
+        "linbit": "k8s.gcr.io/sig-storage/csi-snapshotter:v5.0.1",
+    },
+}
 
 
 class LinstorCSIControllerCharm(charm.CharmBase):
@@ -29,37 +57,40 @@ class LinstorCSIControllerCharm(charm.CharmBase):
 
         self._stored.set_default(linstor_url=None)
 
-        self.framework.observe(self.on.linstor_relation_changed, self._on_linstor_relation_changed)
-        self.framework.observe(self.on.linstor_relation_broken, self._on_linstor_relation_broken)
-
-        self.linstor_csi_image = OCIImageResource(self, "linstor-csi-image")
-        self.csi_attacher_image = OCIImageResource(self, "csi-attacher-image")
-        self.csi_liveness_probe_image = OCIImageResource(self, "csi-liveness-probe-image")
-        self.csi_provisioner_image = OCIImageResource(self, "csi-provisioner-image")
-        self.csi_resizer_image = OCIImageResource(self, "csi-resizer-image")
-        self.csi_snapshotter_image = OCIImageResource(self, "csi-snapshotter-image")
+        self.framework.observe(
+            self.on.linstor_relation_changed, self._on_linstor_relation_changed
+        )
+        self.framework.observe(
+            self.on.linstor_relation_broken, self._on_linstor_relation_broken
+        )
 
         self.framework.observe(self.on.install, self._set_pod_spec)
         self.framework.observe(self.on.upgrade_charm, self._set_pod_spec)
         self.framework.observe(self.on.config_changed, self._set_pod_spec)
 
     def _set_pod_spec(self, event: charm.HookEvent):
-        try:
-            linstor_csi_image = self.linstor_csi_image.fetch()
-            csi_attacher_image = self.csi_attacher_image.fetch()
-            csi_liveness_probe_image = self.csi_liveness_probe_image.fetch()
-            csi_provisioner_image = self.csi_provisioner_image.fetch()
-            csi_resizer_image = self.csi_resizer_image.fetch()
-            csi_snapshotter_image = self.csi_snapshotter_image.fetch()
-        except OCIImageResourceError as e:
-            self.unit.status = e.status
-            event.defer()
-            return
+        print("enter _set_pod_spec")
 
         if not self._stored.linstor_url:
             self.unit.status = model.BlockedStatus("waiting for linstor relation")
             event.defer()
             return
+
+        print("got url")
+
+        try:
+            linstor_csi_image = self.get_image("linstor-csi-image")
+            csi_attacher_image = self.get_image("csi-attacher-image")
+            csi_liveness_probe_image = self.get_image("csi-liveness-probe-image")
+            csi_provisioner_image = self.get_image("csi-provisioner-image")
+            csi_resizer_image = self.get_image("csi-resizer-image")
+            csi_snapshotter_image = self.get_image("csi-snapshotter-image")
+        except OCIImageResourceError as e:
+            self.unit.status = e.status
+            event.defer()
+            return
+
+        print("got images")
 
         socket_vol = {
             "name": "socket-dir",
@@ -71,12 +102,13 @@ class LinstorCSIControllerCharm(charm.CharmBase):
             "ADDRESS": "/run/csi/csi.sock",
             "NAMESPACE": {"field": {"path": "metadata.namespace", "api-version": "v1"}},
             "NODE_NAME": {"field": {"path": "spec.nodeName", "api-version": "v1"}},
+            "POD_NAME": {"field": {"path": "metadata.name", "api-version": "v1"}},
             "LS_CONTROLLERS": self._stored.linstor_url,
         }
 
-        topology = self.config['enable-topology']  # type: bool
-
         if self.unit.is_leader():
+            print("is leader, setting spec")
+
             self.app.status = model.MaintenanceStatus("Setting pod spec")
             self.model.pod.set_spec(
                 spec={
@@ -99,11 +131,11 @@ class LinstorCSIControllerCharm(charm.CharmBase):
                                     "httpGet": {
                                         "path": "/healthz",
                                         "port": 9808,
-                                        "scheme": "HTTP"
+                                        "scheme": "HTTP",
                                     },
                                     "periodSeconds": 10,
                                     "successThreshold": 1,
-                                    "timeoutSeconds": 1
+                                    "timeoutSeconds": 1,
                                 },
                             },
                         },
@@ -133,7 +165,9 @@ class LinstorCSIControllerCharm(charm.CharmBase):
                                 "--csi-address=$(ADDRESS)",
                                 "--timeout=1m",
                                 "--default-fstype=ext4",
-                                f"--feature-gates=Topology={str(topology).lower()}",
+                                "--enable-capacity",
+                                "--extra-create-metadata",
+                                "--capacity-ownerref-level=2",
                                 "--leader-election=true",
                                 "--leader-election-namespace=$(NAMESPACE)",
                             ],
@@ -164,7 +198,7 @@ class LinstorCSIControllerCharm(charm.CharmBase):
                             ],
                             "volumeConfig": [socket_vol],
                             "envConfig": csi_env,
-                        }
+                        },
                     ],
                     "serviceAccount": {
                         "roles": [
@@ -172,74 +206,228 @@ class LinstorCSIControllerCharm(charm.CharmBase):
                                 "name": "csi-attacher",
                                 "global": True,
                                 "rules": [
-                                    {'apiGroups': [''], 'resources': ['persistentvolumes'],
-                                     'verbs': ['get', 'list', 'watch', 'update', 'patch']},
-                                    {'apiGroups': ['storage.k8s.io'], 'resources': ['csinodes'],
-                                     'verbs': ['get', 'list', 'watch']},
-                                    {'apiGroups': ['storage.k8s.io'], 'resources': ['volumeattachments'],
-                                     'verbs': ['get', 'list', 'watch', 'update', 'patch']},
-                                    {'apiGroups': ['storage.k8s.io'], 'resources': ['volumeattachments/status'],
-                                     'verbs': ['patch']},
+                                    {
+                                        "apiGroups": [""],
+                                        "resources": ["persistentvolumes"],
+                                        "verbs": [
+                                            "get",
+                                            "list",
+                                            "watch",
+                                            "update",
+                                            "patch",
+                                        ],
+                                    },
+                                    {
+                                        "apiGroups": ["storage.k8s.io"],
+                                        "resources": ["csinodes"],
+                                        "verbs": ["get", "list", "watch"],
+                                    },
+                                    {
+                                        "apiGroups": ["storage.k8s.io"],
+                                        "resources": ["volumeattachments"],
+                                        "verbs": [
+                                            "get",
+                                            "list",
+                                            "watch",
+                                            "update",
+                                            "patch",
+                                        ],
+                                    },
+                                    {
+                                        "apiGroups": ["storage.k8s.io"],
+                                        "resources": ["volumeattachments/status"],
+                                        "verbs": ["patch"],
+                                    },
                                 ],
                             },
                             {
                                 "name": "csi-provisioner",
                                 "global": True,
                                 "rules": [
-                                    {'apiGroups': [''], 'resources': ['persistentvolumes'],
-                                     'verbs': ['get', 'list', 'watch', 'create', 'delete']},
-                                    {'apiGroups': [''], 'resources': ['persistentvolumeclaims'],
-                                     'verbs': ['get', 'list', 'watch', 'update']},
-                                    {'apiGroups': ['storage.k8s.io'], 'resources': ['storageclasses'],
-                                     'verbs': ['get', 'list', 'watch']},
-                                    {'apiGroups': [''], 'resources': ['events'],
-                                     'verbs': ['list', 'watch', 'create', 'update', 'patch']},
-                                    {'apiGroups': ['snapshot.storage.k8s.io'], 'resources': ['volumesnapshots'],
-                                     'verbs': ['get', 'list']},
-                                    {'apiGroups': ['snapshot.storage.k8s.io'], 'resources': ['volumesnapshotcontents'],
-                                     'verbs': ['get', 'list']},
-                                    {'apiGroups': ['storage.k8s.io'], 'resources': ['csinodes'],
-                                     'verbs': ['get', 'list', 'watch']},
-                                    {'apiGroups': ['storage.k8s.io'], 'resources': ['volumeattachments'],
-                                     'verbs': ['get', 'list', 'watch']},
-                                    {'apiGroups': [''], 'resources': ['nodes'], 'verbs': ['get', 'list', 'watch']},
+                                    {
+                                        "apiGroups": [""],
+                                        "resources": ["persistentvolumes"],
+                                        "verbs": [
+                                            "get",
+                                            "list",
+                                            "watch",
+                                            "create",
+                                            "delete",
+                                        ],
+                                    },
+                                    {
+                                        "apiGroups": [""],
+                                        "resources": ["persistentvolumeclaims"],
+                                        "verbs": [
+                                            "get",
+                                            "list",
+                                            "watch",
+                                            "update",
+                                            "patch",
+                                        ],
+                                    },
+                                    {
+                                        "apiGroups": ["storage.k8s.io"],
+                                        "resources": ["storageclasses"],
+                                        "verbs": ["get", "list", "watch"],
+                                    },
+                                    {
+                                        "apiGroups": [""],
+                                        "resources": ["events"],
+                                        "verbs": [
+                                            "list",
+                                            "watch",
+                                            "create",
+                                            "update",
+                                            "patch",
+                                        ],
+                                    },
+                                    {
+                                        "apiGroups": ["snapshot.storage.k8s.io"],
+                                        "resources": ["volumesnapshots"],
+                                        "verbs": ["get", "list"],
+                                    },
+                                    {
+                                        "apiGroups": ["snapshot.storage.k8s.io"],
+                                        "resources": ["volumesnapshotcontents"],
+                                        "verbs": ["get", "list"],
+                                    },
+                                    {
+                                        "apiGroups": ["storage.k8s.io"],
+                                        "resources": ["csinodes"],
+                                        "verbs": ["get", "list", "watch"],
+                                    },
+                                    {
+                                        "apiGroups": ["storage.k8s.io"],
+                                        "resources": ["volumeattachments"],
+                                        "verbs": ["get", "list", "watch"],
+                                    },
+                                    {
+                                        "apiGroups": [""],
+                                        "resources": ["nodes"],
+                                        "verbs": ["get", "list", "watch"],
+                                    },
+                                    {
+                                        "apiGroups": [""],
+                                        "resources": ["pods"],
+                                        "verbs": ["get"],
+                                    },
+                                    {
+                                        "apiGroups": ["apps"],
+                                        "resources": ["replicasets"],
+                                        "verbs": ["get"],
+                                    },
+                                    {
+                                        "apiGroups": ["storage.k8s.io"],
+                                        "resources": ["csistoragecapacities"],
+                                        "verbs": [
+                                            "get",
+                                            "list",
+                                            "watch",
+                                            "create",
+                                            "update",
+                                            "patch",
+                                            "delete",
+                                        ],
+                                    },
                                 ],
                             },
                             {
                                 "name": "csi-snapshotter",
                                 "global": True,
                                 "rules": [
-                                    {'apiGroups': [''], 'resources': ['events'],
-                                     'verbs': ['list', 'watch', 'create', 'update', 'patch']},
-                                    {'apiGroups': ['snapshot.storage.k8s.io'], 'resources': ['volumesnapshotclasses'],
-                                     'verbs': ['get', 'list', 'watch']},
-                                    {'apiGroups': ['snapshot.storage.k8s.io'], 'resources': ['volumesnapshotcontents'],
-                                     'verbs': ['create', 'get', 'list', 'watch', 'update', 'delete']},
-                                    {'apiGroups': ['snapshot.storage.k8s.io'],
-                                     'resources': ['volumesnapshotcontents/status'], 'verbs': ['update']},
+                                    {
+                                        "apiGroups": [""],
+                                        "resources": ["events"],
+                                        "verbs": [
+                                            "list",
+                                            "watch",
+                                            "create",
+                                            "update",
+                                            "patch",
+                                        ],
+                                    },
+                                    {
+                                        "apiGroups": ["snapshot.storage.k8s.io"],
+                                        "resources": ["volumesnapshotclasses"],
+                                        "verbs": ["get", "list", "watch"],
+                                    },
+                                    {
+                                        "apiGroups": ["snapshot.storage.k8s.io"],
+                                        "resources": ["volumesnapshotcontents"],
+                                        "verbs": [
+                                            "create",
+                                            "get",
+                                            "list",
+                                            "watch",
+                                            "update",
+                                            "patch",
+                                            "delete",
+                                        ],
+                                    },
+                                    {
+                                        "apiGroups": ["snapshot.storage.k8s.io"],
+                                        "resources": ["volumesnapshotcontents/status"],
+                                        "verbs": ["update", "patch"],
+                                    },
                                 ],
                             },
                             {
                                 "name": "csi-resizer",
                                 "global": True,
                                 "rules": [
-                                    {'apiGroups': [''], 'resources': ['persistentvolumes'],
-                                     'verbs': ['get', 'list', 'watch', 'update', 'patch']},
-                                    {'apiGroups': [''], 'resources': ['persistentvolumeclaims'],
-                                     'verbs': ['get', 'list', 'watch']},
-                                    {'apiGroups': [''], 'resources': ['persistentvolumeclaims/status'],
-                                     'verbs': ['update', 'patch']},
-                                    {'apiGroups': [''], 'resources': ['events'],
-                                     'verbs': ['list', 'watch', 'create', 'update', 'patch']},
+                                    {
+                                        "apiGroups": [""],
+                                        "resources": ["persistentvolumes"],
+                                        "verbs": [
+                                            "get",
+                                            "list",
+                                            "watch",
+                                            "update",
+                                            "patch",
+                                        ],
+                                    },
+                                    {
+                                        "apiGroups": [""],
+                                        "resources": ["persistentvolumeclaims"],
+                                        "verbs": ["get", "list", "watch"],
+                                    },
+                                    {
+                                        "apiGroups": [""],
+                                        "resources": ["persistentvolumeclaims/status"],
+                                        "verbs": ["update", "patch"],
+                                    },
+                                    {
+                                        "apiGroups": [""],
+                                        "resources": ["events"],
+                                        "verbs": [
+                                            "list",
+                                            "watch",
+                                            "create",
+                                            "update",
+                                            "patch",
+                                        ],
+                                    },
                                 ],
                             },
                             {
                                 "name": "csi-controller-leader-elector",
                                 "rules": [
-                                    {'apiGroups': ['coordination.k8s.io'], 'resources': ['leases'],
-                                     'verbs': ['get', 'watch', 'list', 'delete', 'update', 'create']},
+                                    {
+                                        "apiGroups": ["coordination.k8s.io"],
+                                        "resources": ["leases"],
+                                        "verbs": [
+                                            "get",
+                                            "watch",
+                                            "list",
+                                            "delete",
+                                            "update",
+                                            "patch",
+                                            "create",
+                                        ],
+                                    },
                                 ],
-                            }
+                            },
                         ],
                     },
                 },
@@ -258,6 +446,30 @@ class LinstorCSIControllerCharm(charm.CharmBase):
     def _on_linstor_relation_broken(self, event: charm.RelationBrokenEvent):
         self._stored.linstor_url = None
         self._set_pod_spec(event)
+
+    def get_image(self, name) -> dict:
+        override = self.model.resources.fetch(
+            "image-override"
+        ).read_bytes()  # type: bytes
+        override = json.loads(override)  # type: dict
+        if override.get(name):
+            return override.get(name)
+
+        pull_secret = self.model.resources.fetch(
+            "pull-secret"
+        ).read_bytes()  # type: bytes
+        if pull_secret:
+            details = json.loads(pull_secret)
+            image = _DEFAULTS[name]["linbit"]
+
+            if not image.startswith("drbd.io"):
+                # Some registries don't like sending login data even if no login is required.
+                return {"imagePath": image}
+
+            details["imagePath"] = image
+            return details
+        else:
+            return {"imagePath": _DEFAULTS[name]["piraeus"]}
 
 
 if __name__ == "__main__":

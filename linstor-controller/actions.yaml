@@ -1,4 +1,2 @@
 # Copyright 2021 LINBIT HA-Solutions GmbH
 # See LICENSE file for licensing details.
-#
-# Actions require Python3 in the container, which makes them basically useless

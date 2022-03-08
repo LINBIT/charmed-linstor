@@ -16,57 +16,47 @@ import logging
 
 import toml
 from oci_image import OCIImageResource, OCIImageResourceError
-from ops import charm, framework, main, model
+from ops import charm, main, model
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.0-alpha0"
+__version__ = "1.0.0-beta.1"
 
 _API_PORT = 3370
 
+_DEFAULTS = {
+    "linstor-controller-image": {
+        "piraeus": "quay.io/piraeusdatastore/piraeus-server:v1.18.0-rc.3",
+        "linbit": "drbd.io/linstor-controller:v1.18.0-rc.3",
+    },
+}
+
 
 class LinstorControllerCharm(charm.CharmBase):
-    _stored = framework.StoredState()
-
     def __init__(self, *args):
         super().__init__(*args)
 
-        # TODO support both mysql and postgres
-        self._stored.set_default(db_info=None)
+        self.framework.observe(
+            self.on.linstor_api_relation_changed, self._on_linstor_api_relation_changed
+        )
 
-        self.framework.observe(self.on.database_relation_changed, self._on_database_relation_changed)
-        self.framework.observe(self.on.database_relation_broken, self._on_database_relation_broken)
-        self.framework.observe(self.on.linstor_api_relation_changed, self._on_linstor_api_relation_changed)
-
-        self.linstor_controller_image = OCIImageResource(self, "linstor-controller-image")
         self.framework.observe(self.on.install, self._set_pod_spec)
         self.framework.observe(self.on.upgrade_charm, self._set_pod_spec)
         self.framework.observe(self.on.config_changed, self._set_pod_spec)
 
     def _set_pod_spec(self, event: charm.HookEvent):
         try:
-            linstor_controller_image = self.linstor_controller_image.fetch()
+            linstor_controller_image = self.get_image("linstor-controller-image")
         except OCIImageResourceError as e:
             self.unit.status = e.status
             event.defer()
             return
 
-        if self._stored.db_info:
-            # TODO: linstor client conf + HTTP endpoint
-            db_info = self._stored.db_info
-
-            linstor_conf = toml.dumps({
-                "db": {
-                    "connection_url":
-                        f"jdbc:postgresql://{db_info['host']}:{db_info['port']}/{db_info['database']}",
-                    "user": db_info['user'],
-                    "password": db_info['password'],
-                },
-            })
-        else:
-            linstor_conf = toml.dumps({
+        linstor_conf = toml.dumps(
+            {
                 "db": {"connection_url": "k8s"},
-            })
+            }
+        )
 
         linstor_client_conf = f"""[global]
 controllers = {self._linstor_api_url()}
@@ -76,12 +66,22 @@ controllers = {self._linstor_api_url()}
             "K8S_AWAIT_ELECTION_ENABLED": 1,
             "K8S_AWAIT_ELECTION_NAME": self.app.name,
             "K8S_AWAIT_ELECTION_LOCK_NAME": self.app.name,
-            "K8S_AWAIT_ELECTION_LOCK_NAMESPACE": {"field": {"path": "metadata.namespace", "api-version": "v1"}},
-            "K8S_AWAIT_ELECTION_IDENTITY": {"field": {"path": "metadata.name", "api-version": "v1"}},
-            "K8S_AWAIT_ELECTION_POD_IP": {"field": {"path": "status.podIP", "api-version": "v1"}},
-            "K8S_AWAIT_ELECTION_NODE_NAME": {"field": {"path": "spec.nodeName", "api-version": "v1"}},
+            "K8S_AWAIT_ELECTION_LOCK_NAMESPACE": {
+                "field": {"path": "metadata.namespace", "api-version": "v1"}
+            },
+            "K8S_AWAIT_ELECTION_IDENTITY": {
+                "field": {"path": "metadata.name", "api-version": "v1"}
+            },
+            "K8S_AWAIT_ELECTION_POD_IP": {
+                "field": {"path": "status.podIP", "api-version": "v1"}
+            },
+            "K8S_AWAIT_ELECTION_NODE_NAME": {
+                "field": {"path": "spec.nodeName", "api-version": "v1"}
+            },
             "K8S_AWAIT_ELECTION_SERVICE_NAME": self.app.name,
-            "K8S_AWAIT_ELECTION_SERVICE_NAMESPACE": {"field": {"path": "metadata.namespace", "api-version": "v1"}},
+            "K8S_AWAIT_ELECTION_SERVICE_NAMESPACE": {
+                "field": {"path": "metadata.namespace", "api-version": "v1"}
+            },
             "K8S_AWAIT_ELECTION_SERVICE_PORTS_JSON": json.dumps(
                 [{"name": "linstor-api", "port": _API_PORT}]
             ),
@@ -124,11 +124,11 @@ controllers = {self._linstor_api_url()}
                                     "httpGet": {
                                         "path": "/",
                                         "port": 9999,
-                                        "scheme": "HTTP"
+                                        "scheme": "HTTP",
                                     },
                                     "periodSeconds": 10,
                                     "successThreshold": 1,
-                                    "timeoutSeconds": 1
+                                    "timeoutSeconds": 1,
                                 },
                             },
                         },
@@ -149,7 +149,10 @@ controllers = {self._linstor_api_url()}
                                     },
                                     {
                                         "apiGroups": [""],
-                                        "resources": ["endpoints", "endpoints/restricted"],
+                                        "resources": [
+                                            "endpoints",
+                                            "endpoints/restricted",
+                                        ],
                                         "verbs": [
                                             "create",
                                             "patch",
@@ -189,8 +192,8 @@ controllers = {self._linstor_api_url()}
                                             "watch",
                                         ],
                                     },
-                                ]
-                            }
+                                ],
+                            },
                         ],
                     },
                 },
@@ -220,34 +223,36 @@ controllers = {self._linstor_api_url()}
 
         self.unit.status = model.ActiveStatus()
 
-    def _on_database_relation_changed(self, event: charm.RelationChangedEvent):
-        if self.unit.is_leader() and event.relation.data[self.app].get("database") != self.app.name:
-            event.relation.data[self.app].update({"database": self.app.name})
-
-        old_info = self._stored.db_info
-
-        self._stored.db_info = {
-            "host": event.relation.data[event.app].get("host"),
-            "port": event.relation.data[event.app].get("port"),
-            "database": event.relation.data[event.app].get("database"),
-            "user": event.relation.data[event.app].get("user"),
-            "password": event.relation.data[event.app].get("password"),
-        }
-
-        if old_info != self._stored.db_info:
-            logger.debug("db connection changed, run _set_pod_spec")
-            self._set_pod_spec(event)
-
-    def _on_database_relation_broken(self, event: charm.RelationBrokenEvent):
-        self._stored.db_info = None
-        self._set_pod_spec(event)
-
     def _on_linstor_api_relation_changed(self, event: charm.RelationChangedEvent):
         if self.unit.is_leader():
             event.relation.data[self.app]["url"] = self._linstor_api_url()
 
     def _linstor_api_url(self):
         return f"http://{self.app.name}.{self.model.name}.svc:{_API_PORT}"
+
+    def get_image(self, name) -> dict:
+        override = self.model.resources.fetch(
+            "image-override"
+        ).read_bytes()  # type: bytes
+        override = json.loads(override)  # type: dict
+        if override.get(name):
+            return override.get(name)
+
+        pull_secret = self.model.resources.fetch(
+            "pull-secret"
+        ).read_bytes()  # type: bytes
+        if pull_secret:
+            details = json.loads(pull_secret)
+            image = _DEFAULTS[name]["linbit"]
+
+            if not image.startswith("drbd.io"):
+                # Some registries don't like sending login data even if no login is required.
+                return {"imagePath": image}
+
+            details["imagePath"] = image
+            return details
+        else:
+            return {"imagePath": _DEFAULTS[name]["piraeus"]}
 
 
 if __name__ == "__main__":

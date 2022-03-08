@@ -1,16 +1,18 @@
-# LINSTOR CSI Node
+# LINSTOR® Satellite
 
 ## Description
 This Charm deploys LINSTOR Satellites on Kubernetes clusters.
 
-Satellites are part of a [LINSTOR] cluster.
+The LINSTOR satellite component manages creation, modification and deletion of storage resources on each node that provides or uses storage resources managed by LINSTOR.
+
+LINSTOR developed by LINBIT®, is a software that manages replicated volumes across a group of machines. With native integration to Kubernetes, LINSTOR makes building, running, and controlling block storage simple. LINSTOR® is open-source software designed to manage block storage devices for large Linux server clusters. It’s used to provide persistent Linux block storage for cloudnative and hypervisor environments.
 
 ## Usage
-This Charm will be part of a [bundle] that includes all components for a fully operational LINSTOR cluster on Kubernetes.
+This Charm will be part of a [LINSTOR bundle] that includes all components for a fully operational LINSTOR cluster on Kubernetes.
 
 Follow these steps to add just a LINSTOR Controller to your cluster:
 ```
-$ juju deploy ./linstor-satellite.charm
+$ juju deploy ch:linstor-satellite
 ```
 
 This will create a daemon set, i.e. every node in the kubernetes cluster will
@@ -47,3 +49,5 @@ $ juju add-relation linstor-controller:linstor-api linstor-satellite:linstor
       Example 2: To configure a LINSTOR ZFS storage pool named "ssds" based on unconfigured devices "/dev/sdc" and "/dev/sdd" use:
         provider=ZFS_THIN,provider_name=ssds,name=ssds,devices=/dev/sdc,devices=/dev/sdd
 
+[LINSTOR]: https://linbit.com/linstor/
+[LINSTOR bundle]: https://charmhub.io/linstor
