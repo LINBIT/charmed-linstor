@@ -5,8 +5,8 @@ stages:
   - deploy
 
 variables:
-  VIRTER_VERSION: v0.14.3
-  VMSHED_VERSION: v0.14.1
+  VIRTER_VERSION: v0.18.1
+  VMSHED_VERSION: v0.15.0
   BUILD_HELPERS_VERSION: dfbf85c26dd39ad1a88807b01fda1dc1d536abbb
 
 prepare-bins:

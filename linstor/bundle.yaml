@@ -8,22 +8,32 @@ applications:
     charm: ch:linstor-controller
     channel: beta
     scale: 1
+    resources:
+      pull-secret: ./linbit.secret
   linstor-csi-controller:
     charm: ch:linstor-csi-controller
     channel: beta
     scale: 1
+    resources:
+      pull-secret: ./linbit.secret
   linstor-csi-node:
     charm: ch:linstor-csi-node
     channel: beta
     scale: 1
+    resources:
+      pull-secret: ./linbit.secret
   linstor-ha-controller:
     charm: ch:linstor-ha-controller
     channel: beta
     scale: 1
+    resources:
+      pull-secret: ./linbit.secret
   linstor-satellite:
     charm: ch:linstor-satellite
     channel: beta
     scale: 1
+    resources:
+      pull-secret: ./linbit.secret
 relations:
 - - linstor-controller:linstor-api
   - linstor-ha-controller:linstor

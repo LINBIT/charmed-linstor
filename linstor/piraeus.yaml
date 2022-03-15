@@ -4,20 +4,20 @@ applications:
   linstor-controller:
     charm: ch:linstor-controller
     resources:
-      pull-secret: ./linbit.secret
+      pull-secret: 1
   linstor-csi-controller:
     charm: ch:linstor-csi-controller
     resources:
-      pull-secret: ./linbit.secret
+      pull-secret: 1
   linstor-csi-node:
     charm: ch:linstor-csi-node
     resources:
-      pull-secret: ./linbit.secret
+      pull-secret: 1
   linstor-ha-controller:
     charm: ch:linstor-ha-controller
     resources:
-      pull-secret: ./linbit.secret
+      pull-secret: 1
   linstor-satellite:
     charm: ch:linstor-satellite
     resources:
-      pull-secret: ./linbit.secret
+      pull-secret: 1
