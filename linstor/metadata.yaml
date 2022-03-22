@@ -15,3 +15,4 @@ description: |
   `StorageClass` and `PersistentVolumeClaim`.
 maintainers:
   - "Moritz Wanzenböck <moritz.wanzenboeck@linbit.com>"
+docs: https://discourse.charmhub.io/t/linstor-docs-index/5939
