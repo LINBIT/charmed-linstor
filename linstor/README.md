@@ -41,7 +41,67 @@ $ touch linbit.secret
 $ juju deploy ch:linstor
 ```
 
+## Initial configuration
+
+Shortly after the initial deployment all pods should be ready, all satellites and the CSI driver configured:
+
+```
+$ juju status
+App                     Version                         Status  Scale  Charm                   Channel
+linstor-controller      linstor-controller:v1.18.0      active      1  linstor-controller      stable
+linstor-csi-controller  linstor-csi:v0.18.0             active      1  linstor-csi-controller  stable
+linstor-csi-node        linstor-csi:v0.18.0             active      3  linstor-csi-node        stable
+linstor-ha-controller   linstor-k8s-ha-controller:v...  active      1  linstor-ha-controller   stable
+linstor-satellite       linstor-satellite:v1.18.0       active      3  linstor-satellite       stable
+$ kubectl get csidriver
+NAME                     ATTACHREQUIRED   PODINFOONMOUNT   STORAGECAPACITY   TOKENREQUESTS   REQUIRESREPUBLISH   MODES        AGE
+linstor.csi.linbit.com   true             true             true              <unset>         false               Persistent   32d
+```
+
+To access the interactive LINSTOR command line, run:
+
+```
+$ kubectl exec -it deployment/linstor-controller -- linstor interactive
+LINSTOR ==> node list
+╭──────────────────────────────────────────────────────────────────╮
+┊ Node           ┊ NodeType  ┊ Addresses                  ┊ State  ┊
+╞══════════════════════════════════════════════════════════════════╡
+┊ node-1.cluster ┊ SATELLITE ┊ 10.43.224.101:3366 (PLAIN) ┊ Online ┊
+┊ node-2.cluster ┊ SATELLITE ┊ 10.43.224.102:3366 (PLAIN) ┊ Online ┊
+┊ node-3.cluster ┊ SATELLITE ┊ 10.43.224.103:3366 (PLAIN) ┊ Online ┊
+╰──────────────────────────────────────────────────────────────────╯
+```
+
+To complete the deployment, you need to configure some storage pools for LINSTOR to use. The easiest way is to use the
+`linstor-satellite` charm configuration:
+
+```
+$ juju config linstor-satellite storage-pools=provider=LVM_THIN,provider_name=vg1/thin1,name=thin1
+$ kubectl exec -it deployment/linstor-controller -- linstor storage-pool list
+...
+┊ thin1    ┊ node-1.cluster ┊ LVM_THIN ┊ vg1/thin1 ┊    100 GiB ┊     100 GiB ┊ True         ┊ Ok    ┊
+┊ thin1    ┊ node-2.cluster ┊ LVM_THIN ┊ vg1/thin1 ┊    100 GiB ┊     100 GiB ┊ True         ┊ Ok    ┊
+┊ thin1    ┊ node-3.cluster ┊ LVM_THIN ┊ vg1/thin1 ┊    100 GiB ┊     100 GiB ┊ True         ┊ Ok    ┊
+```
+
+For more advances cases, refer to the [LINSTOR User Guide](https://linbit.com/drbd-user-guide/linstor-guide-1_0-en/#s-storage_pools)
+
 ## Usage
 
-For the next steps, check the [docs](https://charmhub.io/linstor/docs) to learn how to configure and use storage in
-your cluster.
+Examples are for StorageClass, PersistentVolumeClaim and Pods are available in the [charmed-linstor source](https://github.com/linbit/charmed-linstor/tree/master/examples).
+
+For general information on LINSTOR and the Kubernetes integration, check out [the LINSTOR Users Guide](https://linbit.com/drbd-user-guide/linstor-guide-1_0-en/#ch-kubernetes).
+
+## Contact information
+
+If you have questions or issues, or want to contribute to charms and bundles, head to:
+
+* [charmed-linstor on github](https://github.com/linbit/charmed-linstor)
+
+If you have issues with LINSTOR or the CSI driver, head over to:
+
+* [linstor-server on github](https://github.com/linbit/linstor-server)
+* [linstor-csi on github](https://github.com/piraeusdatastore/linstor-csi)
+
+You can also join our [community slack](https://linbit-community.slack.com/join/shared_invite/enQtOTg0MTEzOTA4ODY0LTFkZGY3ZjgzYjEzZmM2OGVmODJlMWI2MjlhMTg3M2UyOGFiOWMxMmI1MWM4Yjc0YzQzYWU0MjAzNGRmM2M5Y2Q#/)
+or check out our website: [LINBIT.com](https://linbit.com/)
