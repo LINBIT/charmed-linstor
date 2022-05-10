@@ -65,11 +65,16 @@ build-charms:
   script:
     - |
       for META in */metadata.yaml ; do
-        charmcraft pack -p $(dirname $META)
+        charmcraft pack -p $(dirname $META) --destructive-mode
       done
+  cache:
+    key: build-cache-$CI_COMMIT_REF_SLUG
+    paths:
+      - ./*/build
   artifacts:
     paths:
-      - "*.charm"
+      - ./linstor/linstor.zip
+      - ./*.charm
 
 test-unit:
   image: python:3.9
@@ -83,6 +88,7 @@ test-unit:
       for META in */metadata.yaml ; do
         (
           cd $(dirname $META)
+          if [ ! -f requirements-dev.txt ]; then exit 0; fi
           python -m venv venv
           . venv/bin/activate
           pip install -r requirements-dev.txt

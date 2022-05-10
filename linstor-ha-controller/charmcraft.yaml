@@ -11,3 +11,8 @@ bases:
         architectures:
           - amd64
           - arm64
+      - name: ubuntu
+        channel: "22.04"
+        architectures:
+          - amd64
+          - arm64

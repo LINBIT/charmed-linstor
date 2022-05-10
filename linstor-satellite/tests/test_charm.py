@@ -5,21 +5,7 @@
 
 import unittest
 
-from charm import LinstorSatelliteCharm, _parse_storage_pool_config, StoragePoolConfig
-from ops.model import ActiveStatus
-from ops.testing import Harness
-
-
-class TestCharm(unittest.TestCase):
-    def setUp(self):
-        self.harness = Harness(LinstorSatelliteCharm)
-        self.addCleanup(self.harness.cleanup)
-        self.harness.add_oci_resource("linstor-satellite-image")
-        self.harness.add_oci_resource("drbd-injector-image")
-        self.harness.begin_with_initial_hooks()
-
-    def test_is_ready(self):
-        self.assertEqual(self.harness.model.unit.status, ActiveStatus())
+from charm import _parse_storage_pool_config, StoragePoolConfig
 
 
 class TestCharmHelpers(unittest.TestCase):

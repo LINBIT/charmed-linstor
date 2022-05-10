@@ -18,7 +18,7 @@ from collections import namedtuple
 
 import kubernetes
 import linstor
-from oci_image import OCIImageResource, OCIImageResourceError
+from oci_image import OCIImageResourceError
 from ops import charm, framework, main, model
 
 logger = logging.getLogger(__name__)
@@ -31,12 +31,12 @@ StoragePoolConfig = namedtuple(
 
 _DEFAULTS = {
     "linstor-satellite-image": {
-        "piraeus": "quay.io/piraeusdatastore/piraeus-server:v1.18.0-rc.3",
-        "linbit": "drbd.io/linstor-satellite:v1.18.0-rc.3",
+        "piraeus": "quay.io/piraeusdatastore/piraeus-server:v1.18.0",
+        "linbit": "drbd.io/linstor-satellite:v1.18.0",
     },
     "drbd-injector-image": {
-        "piraeus": "quay.io/piraeusdatastore/drbd9-focal:v9.1.6",
-        "linbit": "drbd.io/drbd9-focal:v9.1.6",
+        "piraeus": "quay.io/piraeusdatastore/drbd9-focal:v9.1.7",
+        "linbit": "drbd.io/drbd9-focal:v9.1.7",
     },
 }
 
@@ -90,10 +90,7 @@ class LinstorSatelliteCharm(charm.CharmBase):
 
         mode = self.config["injection-mode"]
 
-        if (
-            mode == "auto"
-            and not self.model.resources.fetch("pull-secret").read_bytes()
-        ):
+        if mode == "auto" and not self.model.resources.fetch("pull-secret").read_bytes():
             mode = "compile"
 
         if mode == "compile":
@@ -219,7 +216,7 @@ class LinstorSatelliteCharm(charm.CharmBase):
                         # Strip slashes from provider pool names, LINSTOR does not expect them here,
                         # i.e. a LVMTHIN pool with pool name "thinpool" will get an LV "linstor_thinpool/thinpool".
                         pool_name=expected_pool.provider_name[
-                            expected_pool.provider_name.rfind("/") + 1 :
+                            expected_pool.provider_name.rfind("/") + 1:
                         ],
                         storage_pool_name=expected_pool.name,
                     )

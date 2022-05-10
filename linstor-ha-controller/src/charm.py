@@ -14,7 +14,7 @@ develop a new k8s charm using the Operator Framework:
 import json
 import logging
 
-from oci_image import OCIImageResource, OCIImageResourceError
+from oci_image import OCIImageResourceError
 from ops import charm, framework, main, model
 
 logger = logging.getLogger(__name__)

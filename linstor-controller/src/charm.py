@@ -15,7 +15,7 @@ import json
 import logging
 
 import toml
-from oci_image import OCIImageResource, OCIImageResourceError
+from oci_image import OCIImageResourceError
 from ops import charm, main, model
 
 logger = logging.getLogger(__name__)
@@ -26,8 +26,8 @@ _API_PORT = 3370
 
 _DEFAULTS = {
     "linstor-controller-image": {
-        "piraeus": "quay.io/piraeusdatastore/piraeus-server:v1.18.0-rc.3",
-        "linbit": "drbd.io/linstor-controller:v1.18.0-rc.3",
+        "piraeus": "quay.io/piraeusdatastore/piraeus-server:v1.18.0",
+        "linbit": "drbd.io/linstor-controller:v1.18.0",
     },
 }
 
