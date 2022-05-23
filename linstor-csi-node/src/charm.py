@@ -19,7 +19,7 @@ from ops import charm, framework, main, model
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.0-beta.1"
+__version__ = "1.0.0"
 
 _DEFAULTS = {
     "linstor-csi-image": {
@@ -54,12 +54,6 @@ class LinstorCSINodeCharm(charm.CharmBase):
         )
         self.framework.observe(
             self.on.linstor_relation_broken, self._on_linstor_relation_broken
-        )
-        self.framework.observe(
-            self.on.satellite_relation_joined, self._on_satellite_relation_joined
-        )
-        self.framework.observe(
-            self.on.satellite_relation_broken, self._on_satellite_relation_broken
         )
 
         self.framework.observe(self.on.config_changed, self._config_changed)
@@ -263,14 +257,6 @@ kubectl apply --filename /k8s/csi-driver.json --server-side=true --field-manager
     def _on_linstor_relation_broken(self, event: charm.RelationBrokenEvent):
         self._stored.linstor_url = None
         self._config_changed(event)
-
-    def _on_satellite_relation_joined(self, event: charm.RelationJoinedEvent):
-        logger.debug(f"joined: {event}")
-        self._stored.satellite_app_name = event.app.name
-
-    def _on_satellite_relation_broken(self, event: charm.RelationBrokenEvent):
-        logger.debug(f"broken: {event}")
-        self._stored.satellite_app_name = None
 
     def get_image(self, name) -> dict:
         override = self.model.resources.fetch(

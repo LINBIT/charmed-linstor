@@ -26,18 +26,14 @@ def build_inventory():
     random.seed(",".join(targets))
 
     all_nodes = {x: {"ansible_host": x, **DEFAULT_HOSTVARS, "ip": socket.gethostbyname(x)} for x in targets}
-    master_nodes = random.sample(sorted(all_nodes), min(3, len(all_nodes)))
+    control_plane = sorted(all_nodes.keys())[:1]
 
     return {
         "_meta": {
             "hostvars": all_nodes,
         },
         "all": {"hosts": list(all_nodes.keys())},
-        "kube_control_plane": {"hosts": master_nodes},
-        "kube_node": {"hosts": list(all_nodes.keys())},
-        "etcd": {"hosts": master_nodes},
-        "k8s_cluster": {"children": ["kube_control_plane", "kube_node"]},
-        "calico_rr": {"children": {}},
+        "control_plane": {"hosts": control_plane},
     }
 
 

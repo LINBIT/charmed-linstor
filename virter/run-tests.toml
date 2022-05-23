@@ -1,73 +1,79 @@
 [values]
-KubeSprayImage = "quay.io/kubespray/kubespray:v2.16.0"
-TestRunnerImage = ""
+AnsibleImage = "quay.io/ansible/ansible-runner:stable-2.9-latest"
+TestImage = "nexus.at.linbit.com:5000/linstor-kubernetes-tests/tests:latest"
+DrbdIoUsername = ""
+DrbdIoPassword = ""
+
+Focus = ""
+Skip = ""
+OutDir = "./run/"
 
 [[steps]]
 [steps.docker]
-image = "{{.KubeSprayImage}}"
+image = "{{.AnsibleImage}}"
 command = [
-    "sh", "-exc",
-    """
-    mkdir -p /virter/out
-
-    ansible-inventory --inventory /virter/workspace/virter/inventory --yaml --list
-    ansible-playbook \
-      --inventory /virter/workspace/virter/inventory \
-      --extra-vars artifacts_dir=/virter/out/artifacts \
-      --extra-vars credentials_dir=/virter/out/credentials \
-      --skip-tags container-engine,bootstrap-os,preinstall,download \
-      /virter/workspace/virter/cluster-play.yml
-    """,
+    "ansible-playbook", "-i", "/virter/workspace/virter/inventory", "/virter/workspace/virter/microk8s.yaml", "-e", "out_dir=/run",
 ]
+[steps.docker.env]
+ANSIBLE_PIPELINING="true"
 [steps.docker.copy]
-source = "/virter/out"
-dest = "./virter"
+source = "/run/kubeconfig"
+dest = "{{ .OutDir }}"
+
+[[steps]]
+[steps.rsync]
+source = "*.charm"
+dest = "/opt/charms/"
+
+[[steps]]
+[steps.shell]
+script = """
+if ! command -v juju ; then
+    exit 0
+fi
+
+juju add-model linstor
+
+trap 'juju status ; microk8s.kubectl describe pod -n linstor' EXIT
+
+cat > linbit.secret <<EOF
+{
+  "username": "$DRBD_IO_USERNAME",
+  "password": "$DRBD_IO_PASSWORD"
+}
+EOF
+echo "{}" > image-override.json
+
+juju deploy /opt/charms/linstor-controller*.charm --resource pull-secret=linbit.secret --resource image-override=image-override.json
+juju deploy /opt/charms/linstor-satellite*.charm --resource pull-secret=linbit.secret --resource image-override=image-override.json --config storage-pools='name=thinpool,provider=LVM_THIN,provider_name=linstor_thinpool/thinpool,devices=/dev/vdc' --config injection-mode=compile
+juju deploy /opt/charms/linstor-csi-controller*.charm --resource pull-secret=linbit.secret --resource image-override=image-override.json
+juju deploy /opt/charms/linstor-csi-node*.charm --resource pull-secret=linbit.secret --resource image-override=image-override.json
+juju deploy /opt/charms/linstor-ha-controller*.charm --resource pull-secret=linbit.secret --resource image-override=image-override.json
+
+juju add-relation linstor-controller:linstor-api linstor-csi-controller:linstor
+juju add-relation linstor-controller:linstor-api linstor-csi-node:linstor
+juju add-relation linstor-controller:linstor-api linstor-ha-controller:linstor
+juju add-relation linstor-controller:linstor-api linstor-satellite:linstor
+
+timeout 600 bash -c -- "while juju status --format=json | jq -r '.applications[][\\"application-status\\"].current' | grep -cv active >/dev/null ; do echo Not all charms active ; sleep 10; done"
+"""
+[steps.shell.env]
+DRBD_IO_USERNAME = "{{ .DrbdIoUsername }}"
+DRBD_IO_PASSWORD = "{{ .DrbdIoPassword }}"
 
 [[steps]]
 [steps.docker]
-image = "{{ .TestRunnerImage }}"
+image = "{{ .TestImage }}"
 command = [
     "sh", "-exc",
     """
-    export KUBECONFIG=/virter/workspace/virter/out/artifacts/admin.conf
-    juju add-k8s --context-name $(kubectl config current-context) e2e --client
-    juju bootstrap e2e --no-gui --config update-status-hook-interval=1m
+    mkdir -p /virter/out/
 
-    juju add-model linstor --config update-status-hook-interval=1m
-
-    trap 'juju status ; kubectl describe pvc -n linstor ; kubectl describe pod -n linstor' EXIT
-
-    juju deploy /virter/workspace/linstor-controller.charm --resource linstor-controller-image=/virter/workspace/virter/image-configs/linstor-controller.json
-    echo Waiting for LINSTOR Controller to get ready
-    timeout 300 bash -c -- "while juju status --format=json | jq -r '.applications[][\\"application-status\\"].current' | grep -cv active >/dev/null ; do echo Not all charms active ; sleep 10; done"
-
-    juju deploy /virter/workspace/linstor-satellite.charm --resource linstor-satellite-image=/virter/workspace/virter/image-configs/linstor-satellite.json --resource drbd-injector-image=/virter/workspace/virter/image-configs/drbd-injector.json --config compile-module=true --config storage-pools='name=thinpool,provider=LVM_THIN,provider_name=linstor_thinpool/thinpool,devices=/dev/vdc'
-    juju add-relation linstor-controller:linstor-api linstor-satellite:linstor
-    echo Waiting for LINSTOR Satellite to get ready
-    timeout 300 bash -c -- "while juju status --format=json | jq -r '.applications[][\\"application-status\\"].current' | grep -cv active >/dev/null ; do echo Not all charms active ; sleep 10; done"
-
-    juju deploy /virter/workspace/linstor-csi-controller.charm --resource linstor-csi-image=/virter/workspace/virter/image-configs/linstor-csi.json --resource csi-snapshotter-image=k8s.gcr.io/sig-storage/csi-snapshotter:v3.0.3 --resource csi-resizer-image=k8s.gcr.io/sig-storage/csi-resizer:v1.1.0 --resource csi-provisioner-image=k8s.gcr.io/sig-storage/csi-provisioner:v2.1.2 --resource csi-liveness-probe-image=k8s.gcr.io/sig-storage/livenessprobe:v2.2.0 --resource csi-attacher-image=k8s.gcr.io/sig-storage/csi-attacher:v3.1.0
-    juju deploy /virter/workspace/linstor-csi-node.charm --resource linstor-csi-image=/virter/workspace/virter/image-configs/linstor-csi.json --resource csi-node-driver-registrar-image=k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.1.0
-    juju deploy /virter/workspace/linstor-ha-controller.charm --resource linstor-ha-controller-image=/virter/workspace/virter/image-configs/linstor-ha-controller.json
-    juju trust linstor-csi-node --scope=cluster
-
-    juju add-relation linstor-controller:linstor-api linstor-csi-controller:linstor
-    juju add-relation linstor-controller:linstor-api linstor-csi-node:linstor
-    juju add-relation linstor-controller:linstor-api linstor-ha-controller:linstor
-    juju add-relation linstor-satellite:satellite linstor-csi-node:satellite
-
-    echo Waiting for LINSTOR CSI to get ready
-    timeout 300 bash -c -- "while juju status --format=json | jq -r '.applications[][\\"application-status\\"].current' | grep -cv active >/dev/null ; do echo Not all charms active ; sleep 10; done"
-
-    trap 'juju status ; kubectl describe pvc ; kubectl describe pod ' EXIT
-    echo Create a pod using LINSTOR for a persistent volume to check that everything deployed correctly
-    kubectl apply -f /virter/workspace/examples/storageclass.yaml
-    kubectl apply -f /virter/workspace/examples/pvc.yaml
-    kubectl apply -f /virter/workspace/examples/pod.yaml
-
-    kubectl wait --for=condition=Ready pod/example-pod --timeout=600s
-
-    echo Smoke test: check that all charms are still active
-    ! juju status --format=json | jq -r '.applications[]["application-status"].current' | grep -cv active >/dev/null
-    """,
+    k8s-e2e-storage-tests --ginkgo.reportFile=/virter/out/k8s-e2e-storage-report.xml "--ginkgo.focus={{ .Focus }}" "--ginkgo.skip={{ .Skip }}" --kubeconfig=$KUBECONFIG --e2e-verify-service-account=false
+    """
 ]
+[steps.docker.env]
+KUBECONFIG = "/virter/workspace/{{ .OutDir }}/kubeconfig"
+[steps.docker.copy]
+source = "/virter/out/"
+dest = "{{ .OutDir }}"

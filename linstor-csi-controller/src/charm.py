@@ -19,7 +19,7 @@ from ops import charm, framework, main, model
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.0-beta.1"
+__version__ = "1.0.0"
 
 _DEFAULTS = {
     "linstor-csi-image": {

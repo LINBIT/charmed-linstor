@@ -1,6 +1,6 @@
 stages:
   - prepare
-  - provision
+  - build
   - test
   - deploy
 
@@ -41,22 +41,8 @@ prepare-image:
     - echo "$DOCKER_AUTH_CONFIG" > /kaniko/.docker/config.json
     - /kaniko/executor --registry-mirror $DOCKER_REGISTRY_MIRROR --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/.gitlab/builder.Dockerfile --destination ${LINBIT_DOCKER_REGISTRY}/charmed-linstor/builder:${CI_COMMIT_REF_SLUG} --cache
 
-provision:
-  stage: provision
-  rules:
-    - if: $CI_MERGE_REQUEST_ID
-    - if: $CI_COMMIT_BRANCH == 'master'
-    - if: $CI_COMMIT_TAG
-  tags:
-    - libvirt
-  script:
-    - export PATH=$PWD/bin:$PATH
-    - BUILD_ID=$(git rev-list -1 HEAD -- virter/base-image.toml virter/base-image-play.yml virter/config virter/inventory)
-    - ln -snf "$DOCKER_AUTH_CONFIG_FILE" $HOME/.docker/config.json
-    - virter image build ${LINBIT_DOCKER_REGISTRY}/vm/ubuntu-focal:latest ${LINBIT_DOCKER_REGISTRY}/charmed-linstor/base-vm:latest --bootcap 10G --provision virter/base-image.toml --push --build-id $BUILD_ID
-
 build-charms:
-  stage: provision
+  stage: build
   rules:
     - if: $CI_MERGE_REQUEST_ID
     - if: $CI_COMMIT_BRANCH == 'master'
@@ -98,21 +84,25 @@ test-unit:
 
 test-e2e:
   stage: test
+  timeout: 3h
   rules:
     - if: $CI_MERGE_REQUEST_ID
     - if: $CI_COMMIT_TAG
   tags:
     - libvirt
+  variables:
+    SKIP: "Slow|LinuxOnly|xfs|ext3|ext4|immediate-binding|retain policy|readOnly|read-only|exec|multiple|subPath"
   script:
-    - mkdir -p virter/image-configs
-    - cp $LINSTOR_CONTROLLER_CONF virter/image-configs/linstor-controller.json
-    - cp $LINSTOR_SATELLITE_CONF virter/image-configs/linstor-satellite.json
-    - cp $DRBD_INJECTOR_CONF virter/image-configs/drbd-injector.json
-    - cp $LINSTOR_CSI_CONF virter/image-configs/linstor-csi.json
-    - cp $LINSTOR_HA_CONTROLLER_CONF virter/image-configs/linstor-ha-controller.json
-    - sed "s#charmed-linstor-base-image#${LINBIT_DOCKER_REGISTRY}/charmed-linstor/base-vm:latest#" virter/vms.toml > .tmp-vms.toml
     - export PATH=$PWD/bin:$PATH
-    - vmshed --vms .tmp-vms.toml --tests virter/tests.toml --set values.TestRunnerImage=${LINBIT_DOCKER_REGISTRY}/charmed-linstor/builder:${CI_COMMIT_REF_SLUG}
+    - virter image pull ubuntu-focal ${LINBIT_DOCKER_REGISTRY}/vm/ubuntu-focal:latest
+    - vmshed --vms virter/vms.toml --tests virter/tests.toml --set values.DrbdIoUsername=${PUBLISH_REGISTRY_USER} --set values.DrbdIoPassword=${PUBLISH_REGISTRY_PASSWORD} --set "values.Skip=$SKIP"
   artifacts:
+    when: always
     paths:
       - tests-out
+    reports:
+      junit:
+        # These reports are created by vmshed, reporting if the test command itself succeeded.
+        - tests-out/test-results/*.xml
+        # These reports are created by the test binaries, holding details about all tests that ran.
+        - tests-out/log/**/*-report.xml

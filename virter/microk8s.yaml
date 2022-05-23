@@ -1,0 +1,123 @@
+---
+- hosts: all
+  tasks:
+    - name: hostname
+      hostname:
+        name: "{{ ansible_fqdn }}"
+
+    - name: docker.io -- block hosts
+      lineinfile:
+        path: /etc/hosts
+        regexp: '^127\.0\.0\.1'
+        line: 127.0.0.1 localhost docker.io registry-1.docker.io
+    - name: kernel-headers -- install
+      apt:
+        name: "linux-headers-{{ ansible_kernel }}"
+        update_cache: yes
+    - name: microk8s -- format storage
+      filesystem:
+        dev: /dev/vdb
+        fstype: ext4
+    - name: microk8s -- make storage dir
+      file:
+        path: /var/snap/microk8s/common/default-storage
+        state: directory
+    - name: microk8s -- mount storage
+      mount:
+        path: /var/snap/microk8s/common/default-storage
+        src: /dev/vdb
+        fstype: ext4
+        state: mounted
+    - name: microk8s -- install
+      snap:
+        name: microk8s
+        channel: latest/stable
+        classic: yes
+    - name: microk8s -- configure mirror
+      copy:
+        dest: /var/snap/microk8s/current/args/certs.d/docker.io/hosts.toml
+        content: |
+          server = "https://nexus.at.linbit.com:5050"
+
+          [host."https://nexus.at.linbit.com:5050"]
+            capabilities = ["pull", "resolve"]
+    - name: microk8s -- stop
+      command: microk8s stop
+    - name: microk8s -- start
+      command: microk8s start
+    - name: microk8s -- configure plugins
+      command: microk8s enable hostpath-storage dns
+      when: inventory_hostname == groups["control_plane"][0]
+    - name: microk8s -- control plane ready
+      command: microk8s status --wait-ready
+      changed_when: no
+      when: inventory_hostname == groups["control_plane"][0]
+    - name: microk8s -- create join token
+      command: microk8s add-node --format=json --token-ttl 60
+      register: join_token
+      changed_when: no
+      when: inventory_hostname == groups["control_plane"][0]
+    - name: microk8s -- save join token
+      set_fact:
+        microk8s_join_token: "{{ (join_token.stdout | from_json).token }}"
+        microk8s_join_url: "{{ (join_token.stdout | from_json).urls[0] }}"
+      when: inventory_hostname == groups["control_plane"][0]
+    - name: microk8s -- generate config
+      shell: "microk8s config > /etc/kubeconfig"
+      args:
+        creates: kubeconfig
+      when: inventory_hostname == groups["control_plane"][0]
+    - name: kubeadm -- fetch kubeconfig
+      fetch:
+        src: /etc/kubeconfig
+        flat: yes
+        dest: "{{ out_dir | default('.') }}/kubeconfig"
+      when: inventory_hostname == groups["control_plane"][0]
+
+    - name: microk8s -- distribute facts
+      set_fact:
+        microk8s_join_token: "{{ hostvars[groups['control_plane'][0]]['microk8s_join_token'] }}"
+        microk8s_join_url: "{{ hostvars[groups['control_plane'][0]]['microk8s_join_url'] }}"
+      when: inventory_hostname != groups["control_plane"][0]
+
+    - name: microk8s -- join control plane
+      command: "microk8s join {{ microk8s_join_url }}"
+      when: inventory_hostname in groups["control_plane"] and inventory_hostname != groups["control_plane"][0]
+    - name: microk8s -- control plane ready
+      command: microk8s status --wait-ready
+      when: inventory_hostname in groups["control_plane"] and inventory_hostname != groups["control_plane"][0]
+    - name: microk8s -- join worker
+      command: "microk8s join {{ microk8s_join_url }} --worker"
+      when: inventory_hostname not in groups["control_plane"]
+      throttle: 1
+
+    - name: juju -- install
+      snap:
+        name: juju
+        channel: latest
+        classic: yes
+      when: inventory_hostname == groups["control_plane"][0]
+    - name: juju -- bootstrap
+      command: juju bootstrap microk8s micro
+      when: inventory_hostname == groups["control_plane"][0]
+
+    - name: jq -- install
+      snap:
+        name: jq
+      when: inventory_hostname == groups["control_plane"][0]
+
+    - name: helm -- install
+      snap:
+        name: helm
+        channel: latest
+        classic: yes
+      when: inventory_hostname == groups["control_plane"][0]
+    - name: helm -- configure piraeus repo
+      command: helm repo add piraeus-charts https://piraeus.io/helm-charts/
+      when: inventory_hostname == groups["control_plane"][0]
+    - name: helm -- install snapshot validation webhook
+      command: helm --kubeconfig=/etc/kubeconfig install --namespace snapshot-controller --create-namespace snapshot-validation-webhook piraeus-charts/snapshot-validation-webhook
+      when: inventory_hostname == groups["control_plane"][0]
+    - name: helm -- install snapshot controller
+      command: helm --kubeconfig=/etc/kubeconfig install --namespace snapshot-controller --create-namespace snapshot-controller piraeus-charts/snapshot-controller
+      when: inventory_hostname == groups["control_plane"][0]
