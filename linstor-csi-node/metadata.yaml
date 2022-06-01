@@ -21,10 +21,6 @@ requires:
   linstor:
     interface: linstor-api
     limit: 1
-  satellite:
-    interface: linstor-satellites
-    optional: true
-    limit: 1
 
 resources:
   image-override:

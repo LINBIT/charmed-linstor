@@ -15,19 +15,19 @@ import json
 import logging
 
 import toml
-from oci_image import OCIImageResource, OCIImageResourceError
+from oci_image import OCIImageResourceError
 from ops import charm, main, model
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.0-beta.1"
+__version__ = "1.0.0"
 
 _API_PORT = 3370
 
 _DEFAULTS = {
     "linstor-controller-image": {
-        "piraeus": "quay.io/piraeusdatastore/piraeus-server:v1.18.0-rc.3",
-        "linbit": "drbd.io/linstor-controller:v1.18.0-rc.3",
+        "piraeus": "quay.io/piraeusdatastore/piraeus-server:v1.18.2",
+        "linbit": "drbd.io/linstor-controller:v1.18.2",
     },
 }
 
@@ -78,7 +78,7 @@ controllers = {self._linstor_api_url()}
             "K8S_AWAIT_ELECTION_NODE_NAME": {
                 "field": {"path": "spec.nodeName", "api-version": "v1"}
             },
-            "K8S_AWAIT_ELECTION_SERVICE_NAME": self.app.name,
+            "K8S_AWAIT_ELECTION_SERVICE_NAME": "linstor-api",
             "K8S_AWAIT_ELECTION_SERVICE_NAMESPACE": {
                 "field": {"path": "metadata.namespace", "api-version": "v1"}
             },
@@ -143,6 +143,8 @@ controllers = {self._linstor_api_url()}
                                         "resources": ["leases"],
                                         "verbs": [
                                             "get",
+                                            "list",
+                                            "watch",
                                             "update",
                                             "create",
                                         ],
@@ -201,7 +203,7 @@ controllers = {self._linstor_api_url()}
                     "kubernetesResources": {
                         "services": [
                             {
-                                "name": self.app.name,
+                                "name": "linstor-api",
                                 "spec": {
                                     "type": "ClusterIP",
                                     "clusterIP": "",
@@ -228,7 +230,7 @@ controllers = {self._linstor_api_url()}
             event.relation.data[self.app]["url"] = self._linstor_api_url()
 
     def _linstor_api_url(self):
-        return f"http://{self.app.name}.{self.model.name}.svc:{_API_PORT}"
+        return f"http://linstor-api.{self.model.name}.svc:{_API_PORT}"
 
     def get_image(self, name) -> dict:
         override = self.model.resources.fetch(

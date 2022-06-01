@@ -18,12 +18,12 @@ from collections import namedtuple
 
 import kubernetes
 import linstor
-from oci_image import OCIImageResource, OCIImageResourceError
+from oci_image import OCIImageResourceError
 from ops import charm, framework, main, model
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.0-beta.1"
+__version__ = "1.0.0"
 
 StoragePoolConfig = namedtuple(
     "StoragePoolConfig", ("name", "provider", "provider_name", "devices")
@@ -31,12 +31,12 @@ StoragePoolConfig = namedtuple(
 
 _DEFAULTS = {
     "linstor-satellite-image": {
-        "piraeus": "quay.io/piraeusdatastore/piraeus-server:v1.18.0-rc.3",
-        "linbit": "drbd.io/linstor-satellite:v1.18.0-rc.3",
+        "piraeus": "quay.io/piraeusdatastore/piraeus-server:v1.18.2",
+        "linbit": "drbd.io/linstor-satellite:v1.18.2",
     },
     "drbd-injector-image": {
-        "piraeus": "quay.io/piraeusdatastore/drbd9-focal:v9.1.6",
-        "linbit": "drbd.io/drbd9-focal:v9.1.6",
+        "piraeus": "quay.io/piraeusdatastore/drbd9-focal:v9.1.7",
+        "linbit": "drbd.io/drbd9-focal:v9.1.7",
     },
 }
 
@@ -54,9 +54,6 @@ class LinstorSatelliteCharm(charm.CharmBase):
         )
         self.framework.observe(
             self.on.linstor_relation_broken, self._on_linstor_relation_broken
-        )
-        self.framework.observe(
-            self.on.satellite_relation_changed, self._on_satellite_relation_changed
         )
 
         self.framework.observe(self.on.install, self._set_pod_spec)
@@ -90,10 +87,7 @@ class LinstorSatelliteCharm(charm.CharmBase):
 
         mode = self.config["injection-mode"]
 
-        if (
-            mode == "auto"
-            and not self.model.resources.fetch("pull-secret").read_bytes()
-        ):
+        if mode == "auto" and not self.model.resources.fetch("pull-secret").read_bytes():
             mode = "compile"
 
         if mode == "compile":
@@ -166,25 +160,76 @@ class LinstorSatelliteCharm(charm.CharmBase):
             )
             self.app.status = model.ActiveStatus()
 
+        self._ensure_node_registered(event)
         self._ensure_storage_pools(event)
+
+    def _ensure_node_registered(self, event):
+        """Ensure each unit is registered as a node"""
+
+        self.unit.status = model.MaintenanceStatus("Updating node registration")
+
+        pod = self._get_unit_pod()
+        if not pod:
+            logger.debug("could not find pod matching unit %s", self.unit.name)
+            event.defer()
+            return
+
+        if not self._stored.linstor_url:
+            logger.debug("No linstor url set %s", self.unit.name)
+            event.defer()
+            return
+
+        try:
+            with self._linstor_client(self._stored.linstor_url) as client:
+                nodes_resp = client.node_list_raise(
+                    filter_by_nodes=[pod.spec.node_name]
+                )
+                if len(nodes_resp.nodes) == 0:
+                    props = {
+                        f"{linstor.sharedconsts.NAMESPC_AUXILIARY}/charm/registered-for": self.app.name,
+                    }
+
+                    create_resp = client.node_create(
+                        pod.spec.node_name,
+                        linstor.sharedconsts.VAL_NODE_TYPE_STLT,
+                        pod.status.pod_ip,
+                        property_dict=props,
+                    )
+                    _assert_no_linstor_error(create_resp)
+        except linstor.errors.LinstorNetworkError:
+            self.unit.status = model.MaintenanceStatus(
+                "waiting for controller to come online"
+            )
+            event.defer()
+            return
+        self.unit.status = model.ActiveStatus()
 
     def _ensure_storage_pools(self, event):
         """Ensure each unit has the configured storage pools available"""
+        self.unit.status = model.MaintenanceStatus("Updating storage pools")
+
         if not self._stored.linstor_url:
             self.unit.status = model.ActiveStatus()
+            event.defer()
             return
 
         pod = self._get_unit_pod()
         if not pod:
             logger.debug("could not find pod matching unit %s", self.unit.name)
+            event.defer()
             return
 
-        self.unit.status = model.MaintenanceStatus("Updating storage pools")
         try:
             with self._linstor_client(self._stored.linstor_url) as client:
-                node = client.node_list_raise(
+                nodes = client.node_list_raise(
                     filter_by_nodes=[pod.spec.node_name]
-                ).nodes[0]
+                ).nodes
+                if len(nodes) < 1:
+                    logger.debug("node not registered")
+                    event.defer()
+                    return
+
+                node = nodes[0]
                 pool_list_response = client.storage_pool_list_raise(
                     filter_by_nodes=[pod.spec.node_name]
                 )
@@ -219,7 +264,7 @@ class LinstorSatelliteCharm(charm.CharmBase):
                         # Strip slashes from provider pool names, LINSTOR does not expect them here,
                         # i.e. a LVMTHIN pool with pool name "thinpool" will get an LV "linstor_thinpool/thinpool".
                         pool_name=expected_pool.provider_name[
-                            expected_pool.provider_name.rfind("/") + 1 :
+                            expected_pool.provider_name.rfind("/") + 1:
                         ],
                         storage_pool_name=expected_pool.name,
                     )
@@ -237,36 +282,7 @@ class LinstorSatelliteCharm(charm.CharmBase):
     def _on_linstor_relation_changed(self, event: charm.RelationChangedEvent):
         self._stored.linstor_url = event.relation.data[event.app].get("url")
 
-        if not self._stored.linstor_url:
-            return
-
-        pod = self._get_unit_pod()
-        if not pod:
-            logger.debug("could not find pod matching unit %s", self.unit.name)
-            return
-
-        try:
-            with self._linstor_client(self._stored.linstor_url) as client:
-                nodes_resp = client.node_list_raise(
-                    filter_by_nodes=[pod.spec.node_name]
-                )
-                if len(nodes_resp.nodes) == 0:
-                    create_resp = client.node_create(
-                        pod.spec.node_name,
-                        linstor.sharedconsts.VAL_NODE_TYPE_STLT,
-                        pod.status.pod_ip,
-                        property_dict={
-                            f"{linstor.sharedconsts.NAMESPC_AUXILIARY}/charm/registered-for": self.app.name
-                        },
-                    )
-                    _assert_no_linstor_error(create_resp)
-        except linstor.errors.LinstorNetworkError:
-            self.unit.status = model.MaintenanceStatus(
-                "waiting for controller to come online"
-            )
-            event.defer()
-        self.unit.status = model.ActiveStatus()
-
+        self._ensure_node_registered(event)
         self._ensure_storage_pools(event)
 
     def _on_linstor_relation_broken(self, _event: charm.RelationBrokenEvent):
@@ -291,9 +307,6 @@ class LinstorSatelliteCharm(charm.CharmBase):
             )
 
         self._stored.linstor_url = None
-
-    def _on_satellite_relation_changed(self, event: charm.RelationChangedEvent):
-        logger.info(f"satellite relation: {event}")
 
     def _get_unit_pod(self) -> typing.Optional[kubernetes.client.models.V1Pod]:
         core_v1 = _core_v1_api()

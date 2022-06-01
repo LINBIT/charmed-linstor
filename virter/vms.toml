@@ -2,8 +2,8 @@
 vcpus = 4
 memory = "8G"
 boot_capacity = "30G"
-base_image = "charmed-linstor-base-image"
+base_image = "ubuntu-focal"
 disks = [
-    "name=static-kubernetes-storage,size=30G,bus=virtio",
-    "name=linstor-kubernetes-storage,size=30G,bus=virtio",
+    "name=static-kubernetes-storage,size=10G,bus=virtio",
+    "name=linstor-kubernetes-storage,size=20G,bus=virtio",
 ]

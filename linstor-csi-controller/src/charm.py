@@ -14,17 +14,17 @@ develop a new k8s charm using the Operator Framework:
 import json
 import logging
 
-from oci_image import OCIImageResource, OCIImageResourceError
+from oci_image import OCIImageResourceError
 from ops import charm, framework, main, model
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.0-beta.1"
+__version__ = "1.0.0"
 
 _DEFAULTS = {
     "linstor-csi-image": {
-        "piraeus": "quay.io/piraeusdatastore/piraeus-csi:v0.18.0",
-        "linbit": "drbd.io/linstor-csi:v0.18.0",
+        "piraeus": "quay.io/piraeusdatastore/piraeus-csi:v0.19.0",
+        "linbit": "drbd.io/linstor-csi:v0.19.0",
     },
     "csi-attacher-image": {
         "piraeus": "k8s.gcr.io/sig-storage/csi-attacher:v3.4.0",

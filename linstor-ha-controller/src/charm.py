@@ -14,12 +14,12 @@ develop a new k8s charm using the Operator Framework:
 import json
 import logging
 
-from oci_image import OCIImageResource, OCIImageResourceError
+from oci_image import OCIImageResourceError
 from ops import charm, framework, main, model
 
 logger = logging.getLogger(__name__)
 
-__version__ = "1.0.0-beta.1"
+__version__ = "1.0.0"
 
 _DEFAULTS = {
     "linstor-ha-controller-image": {
